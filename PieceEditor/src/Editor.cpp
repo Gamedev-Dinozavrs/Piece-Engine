@@ -1,9 +1,12 @@
 //pch
 //inc
 
-#include "../../PieceLib/src/core/Application.h"
+#include "../../PieceLib/src/core/Application.h" // TODO: Add include dir
 #include "EditorLayer.h"
 
+#include <vulkan/vulkan.h>
+#include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 
 namespace Piece {
 

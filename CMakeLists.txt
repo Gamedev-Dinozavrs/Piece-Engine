@@ -1,18 +1,21 @@
 cmake_minimum_required(VERSION 3.10)
-
 project(Piece VERSION 1.0 LANGUAGES CXX)
+
+if (DEFINED ENV{VULKAN_SDK})
+    set(VULKAN_SDK_PATH $ENV{VULKAN_SDK})
+else()
+    message(FATAL_ERROR "Please Install Vulkan SDK and put VULKAN_SDK env variable to Vulkan version folder!")
+endif()
 
 if (WIN32)
     add_definitions(-DPLATFORM_WINDOWS)
-endif()
-
-if (UNIX AND NOT APPLE)
+elseif (UNIX AND NOT APPLE)
     add_definitions(-DPLATFORM_LINUX)
-endif()
-
-if (APPLE)
+elseif (APPLE)
     add_definitions(-DPLATFORM_MAC)
 endif()
 
 add_subdirectory(PieceLib)
+add_subdirectory(Dependencies/GLFW)
+add_subdirectory(Dependencies/GLM)
 add_subdirectory(PieceEditor)
