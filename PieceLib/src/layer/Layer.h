@@ -2,21 +2,22 @@
 
 #include <string>
 
-#include "Timestep.h"
+#include <core/Core.h>
+#include <event/Event.h>
+#include <core/Timestep.h>
 
 namespace Piece {
 
 	class Layer {
-
 	public:
 		Layer(const std::string& name = "Layer");
 		virtual ~Layer();
 
-		virtual void onAttach() {}
-		virtual void onDetach() {}
-		virtual void onUpdate(Timestep ts) {}
-		virtual void onImGuiRender() {}
-		//virtual void onEvent(Event& event) {}
+		virtual void OnAttach() {}
+		virtual void OnDetach() {}
+		virtual void OnUpdate(Timestep ts) {}
+		virtual void OnImGuiRender() {}
+		virtual void OnEvent(Event& event) {}
 
 		inline const std::string& getName() const { return m_debugName; }
 

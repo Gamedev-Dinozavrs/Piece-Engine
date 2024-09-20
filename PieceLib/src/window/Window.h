@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional> // Temp
+#include <event/Event.h>
 
 #define GLFW_INCLUDE_VULKAN // TODO: delete then
 #include <GLFW/glfw3.h>
@@ -18,24 +19,24 @@ namespace Piece {
 		uint32_t height;
 	};
 
-	class PieceWindow {
+	class Window {
 	public:
-		//using EventCallback = std::function<void(Event&)>; add when Events are implemented
+		using EventCallback = std::function<void(Event&)>;
 
-		virtual ~PieceWindow() {}
+		virtual ~Window() {}
 		
 		virtual void OnUpdate() = 0;
 		
 		virtual uint32_t GetWidth() const = 0;
 		virtual uint32_t GetHeight() const = 0;
 
-		//virtual void SetEventCallback(const EventCallback& callbackFunc) = 0;
+		virtual void SetEventCallback(const EventCallback& callbackFunc) = 0;
 		virtual void SetVSync(bool enabled) = 0;
 		virtual bool IsVSyncOnOrNot() const = 0;
 
 		virtual void* GetNativeWindow() const = 0;
 
-		static PieceWindow* Create(const WindowProperties& properties = WindowProperties());
+		static Window* Create(const WindowProperties& properties = WindowProperties());
 	};
 
 } // namespace Piece

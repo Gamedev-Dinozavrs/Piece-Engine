@@ -2,8 +2,8 @@
 
 //#include <Piece.h>
 
-#include "../../PieceLib/src/core/EntryPoint.h"
-#include "../../PieceLib/src/core/Layer.h"
+#include <core/EntryPoint.h>
+#include <layer/Layer.h>
 #include <iostream>
 
 namespace Piece {

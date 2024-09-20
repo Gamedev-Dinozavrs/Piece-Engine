@@ -1,8 +1,11 @@
 #pragma once
 
-#include <string> // temp
-#include <memory> // temp
-#include "Layer.h"
+#include <core/Core.h>
+#include <core/Timestep.h>
+#include <window/Window.h>
+#include <event/ApplicationEvent.h>
+#include <layer/Layer.h>
+#include <layer/LayerStack.h>
 
 namespace Piece {
 
@@ -12,30 +15,31 @@ namespace Piece {
 		virtual ~Application();
 
 		void Run();
-		//void OnEvent(Event& event);
+		void OnEvent(Event& event);
 
 		void PushLayer(Layer* layer);
 		void PushOverlay(Layer* overlay);
 
-		static Application Get() { return *s_Instance; }
+		static Application& Get() { return *s_Instance; }
 
-		// ImGuiLayer ...
+		//ImGuiLayer GetImGuiLayer() { return m_ImGuiLayer; }
 
 		void Close() { m_IsRunning = false; }
-		//inline Window& GetWindow() { return *m_Window; }
+		inline Window& GetWindow() { return *m_Window; }
 
 	private:
-		//bool OnWindowClose(WindowCloseEvent& event);
-		//bool OnWindowResize(WindowResizeEvent& event);
+		bool OnWindowClose(WindowCloseEvent& event);
+		bool OnWindowResize(WindowResizeEvent& event);
 
 	private:
-		//std::unique_ptr<Window> m_Window;
-		//ImGuiLayer ...
+		Scope<Window> m_Window;
+		//ImGuiLayer* m_ImGuiLayer;
 
 		bool m_IsRunning = false;
 		bool m_IsMinimized = false;
 
-		// LayerStack...
+		LayerStack m_LayerStack;
+
 		float m_LastFrameTime = 0.0f;
 		static Application* s_Instance;
 	};
