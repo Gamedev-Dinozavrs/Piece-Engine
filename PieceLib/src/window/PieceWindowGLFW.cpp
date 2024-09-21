@@ -13,10 +13,6 @@ namespace Piece {
 		// log "GLFW Error ({0}): {1} ", error, description
 	}
 
-	Window* Window::Create(const WindowProperties& props) {
-		return new PieceWindowGLFW(props);
-	}
-
 	PieceWindowGLFW::PieceWindowGLFW(const WindowProperties& props) {
 		//glfwWindowHint(GLFW_SAMPLES, 4);
 		Init(props);

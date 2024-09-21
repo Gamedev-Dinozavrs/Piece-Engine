@@ -1,7 +1,6 @@
 //pch
 #include <core/Application.h>
-
-#define BIND_EVENT_FUNC(func) [this](auto&&... args) -> decltype(auto) { return this->func(std::forward<decltype(args)>(args)...); }
+#include <window/PieceWindowGLFW.h>
 
 namespace Piece {
 
@@ -12,8 +11,11 @@ namespace Piece {
 		PIECE_CORE_ASSERT(!s_instance, "Application already exist!");
 		s_Instance = this;
 
-		m_Window = std::make_unique<Window>(Window::Create(WindowProperties(name)));
-		m_Window->SetEventCallback(BIND_EVENT_FUNC(Application::OnEvent));
+		/*
+		*  In future if we need more than 1 window framework we include it's implementation here and use it as we need!
+		*/
+		m_Window = CreateScope<PieceWindowGLFW>(WindowProperties(name));
+		m_Window->SetEventCallback(PIECE_BIND_EVENT_FUNC(Application::OnEvent));
 
 		// Renderer::Init();
 
@@ -50,8 +52,8 @@ namespace Piece {
 
 	void Application::OnEvent(Event& event) {
 		EventDispatcher dispatcher(event);
-		dispatcher.Dispatch<WindowCloseEvent>(BIND_EVENT_FUNC(Application::OnWindowClose));
-		dispatcher.Dispatch<WindowResizeEvent>(BIND_EVENT_FUNC(Application::OnWindowResize));
+		dispatcher.Dispatch<WindowCloseEvent>(PIECE_BIND_EVENT_FUNC(Application::OnWindowClose));
+		dispatcher.Dispatch<WindowResizeEvent>(PIECE_BIND_EVENT_FUNC(Application::OnWindowResize));
 
 		for (auto it = m_LayerStack.end(); it != m_LayerStack.begin();) {
 			if (event.IsHandled)
