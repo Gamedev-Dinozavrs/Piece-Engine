@@ -1,0 +1,50 @@
+# ==============================
+# CMake (in-source & VS)
+# ==============================
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+
+# ==============================
+# Visual Studio / MSVC
+# ==============================
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.vcxproj.*.user
+*.tlog
+*.idb
+*.ilk
+*.pdb
+*.obj
+*.log
+
+# Special CMake-generated VS targets
+ALL_BUILD.*
+ZERO_CHECK.*
+INSTALL.*
+
+# ==============================
+# Per-target generated folders
+# ==============================
+**/CMakeFiles/
+**/cmake_install.cmake
+
+# ==============================
+# Build output directories
+# ==============================
+Debug/
+Release/
+RelWithDebInfo/
+MinSizeRel/
+x64/
+Win32/
+out/
+build/
+
+# ==============================
+# Optional: VS cache
+# ==============================
+.vscode/
