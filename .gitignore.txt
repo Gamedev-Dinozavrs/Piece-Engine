@@ -29,3 +29,7 @@ x64/
 Win32/
 out/
 build/
+
+# lib 
+PieceLib/src/core/vc140.pdb
+      

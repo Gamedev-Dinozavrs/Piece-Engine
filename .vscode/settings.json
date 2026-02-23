@@ -1,0 +1,5 @@
+{
+  "cmakeGenerator": "Ninja",               // Linux/Mac
+  "exeSubfolder": "Debug",                 // Windows builds go in Debug folder
+  "exeExt": ".exe"                         // Windows executable extension
+}

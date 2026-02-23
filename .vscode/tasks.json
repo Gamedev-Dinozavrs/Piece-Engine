@@ -1,0 +1,43 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "CMake Configure",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "-S", "${workspaceFolder}",
+        "-B", "${workspaceFolder}/build"
+      ],
+      "group": "build",
+      "problemMatcher": [],
+      "detail": "Configure the project"
+    },
+    {
+      "label": "CMake Build",
+      "type": "shell",
+      "command": "cmake",
+      "args": [
+        "--build", "${workspaceFolder}/build",
+        "--config", "Debug"
+      ],
+      "group": {
+        "kind": "build",
+      },
+      "dependsOn": "CMake Configure",
+      "problemMatcher": [],
+      "detail": "Build the project"
+    },
+    {
+      "label": "Run PieceEditor",
+      "type": "shell",
+      "command": "${workspaceFolder}/build/PieceEditor/Debug/PieceEditor.exe",
+      "group": {
+        "kind": "build"
+      },
+      "dependsOn": "CMake Build",
+      "problemMatcher": [],
+      "detail": "Run the main executable"
+    }
+  ]
+}
