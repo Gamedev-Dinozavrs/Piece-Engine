@@ -1,0 +1,34 @@
+# Ignore all CMake + Visual Studio generated files ANYWHERE
+.vs/
+**/.vs/
+
+CMakeCache.txt
+**/CMakeCache.txt
+
+CMakeFiles/
+**/CMakeFiles/
+
+cmake_install.cmake
+**/cmake_install.cmake
+
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+
+ALL_BUILD.*
+ZERO_CHECK.*
+INSTALL.*
+
+# VS build output
+Debug/
+Release/
+RelWithDebInfo/
+MinSizeRel/
+x64/
+Win32/
+out/
+build/
+
+**/build/
+**/PieceLib/src/core/vc140.pdb      
