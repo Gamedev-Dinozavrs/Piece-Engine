@@ -24,8 +24,6 @@ namespace Piece {
 
 	void PieceWindowGLFW::OnUpdate() {
 		glfwPollEvents();
-		glfwSwapBuffers(m_Window);
-		//m_context->swapBuffers();
 	}
 
 	void PieceWindowGLFW::SetVSync(bool enabled) {
@@ -59,8 +57,9 @@ namespace Piece {
 			s_GLFWInitialized = true;
 		}
 
+		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		m_Window = glfwCreateWindow(static_cast<int>(m_Data.Width),
-									static_cast<int>(m_Data.Height),
+					static_cast<int>(m_Data.Height),
 									m_Data.Name.c_str(),
 									nullptr,
 									nullptr);
@@ -75,6 +74,12 @@ namespace Piece {
 
 			WindowResizeEvent wrEvent(width, height);
 			data.CallbackFunc(wrEvent);
+		});
+
+		glfwSetWindowCloseCallback(m_Window, [](GLFWwindow* window) {
+			WindowData& data = *(WindowData*)glfwGetWindowUserPointer(window);
+			WindowCloseEvent event;
+			data.CallbackFunc(event);
 		});
 
 		glfwSetKeyCallback(m_Window, [](GLFWwindow* window, int key, int scancode, int action, int mods) {

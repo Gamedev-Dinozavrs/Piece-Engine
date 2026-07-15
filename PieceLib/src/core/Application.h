@@ -4,6 +4,7 @@
 #include <core/Timestep.h>
 #include <window/Window.h>
 #include <event/ApplicationEvent.h>
+#include <event/MouseEvent.h>
 #include <layer/Layer.h>
 #include <layer/LayerStack.h>
 
@@ -30,6 +31,7 @@ namespace Piece {
 	private:
 		bool OnWindowClose(WindowCloseEvent& event);
 		bool OnWindowResize(WindowResizeEvent& event);
+		bool OnMouseScrolled(MouseScrolledEvent& event);
 
 	private:
 		Scope<Window> m_Window;

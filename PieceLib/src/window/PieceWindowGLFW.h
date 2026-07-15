@@ -15,6 +15,7 @@ namespace Piece {
 		inline uint32_t GetWidth() const override { return m_Data.Width; }
 		inline uint32_t GetHeight() const override { return m_Data.Height; }
 		VkExtent2D GetExtent() const { return { static_cast<uint32_t>(m_Data.Width), static_cast<uint32_t>(m_Data.Height) }; }
+		inline bool ShouldClose() const { return glfwWindowShouldClose(m_Window); }
 
 		inline void SetEventCallback(const EventCallback& callback) override { m_Data.CallbackFunc = callback; }
 		

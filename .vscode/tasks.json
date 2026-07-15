@@ -24,9 +24,21 @@
       "group": {
         "kind": "build",
       },
-      "dependsOn": "CMake Configure",
+      "dependsOn": ["CMake Configure", "Compile Shaders"],
       "problemMatcher": [],
       "detail": "Build the project"
+    },
+    {
+      "label": "Compile Shaders",
+      "type": "shell",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "${workspaceFolder}\\PieceLib\\src\\shaders\\compile_shaders.bat"
+      ],
+      "group": "build",
+      "problemMatcher": [],
+      "detail": "Compile Vulkan shader sources"
     },
     {
       "label": "Run PieceEditor",

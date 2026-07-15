@@ -8,12 +8,28 @@ endif()
 
 find_package(Vulkan REQUIRED)
 
-file(GLOB CORE "src/core/*.cpp" "src/core/*.h")
-file(GLOB WINDOW "src/window/*.cpp" "src/window/*.h")
-file(GLOB EVENT "src/event/*.cpp" "src/event/*.h")
-file(GLOB LAYER "src/layer/*.cpp" "src/layer/*.h")
+file(GLOB CORE CONFIGURE_DEPENDS "src/core/*.cpp" "src/core/*.h")
+file(GLOB WINDOW CONFIGURE_DEPENDS "src/window/*.cpp" "src/window/*.h")
+file(GLOB EVENT CONFIGURE_DEPENDS "src/event/*.cpp" "src/event/*.h")
+file(GLOB LAYER CONFIGURE_DEPENDS "src/layer/*.cpp" "src/layer/*.h")
+file(GLOB RENDERER CONFIGURE_DEPENDS "src/renderer/*.cpp" "src/renderer/*.h")
+file(GLOB SCENE CONFIGURE_DEPENDS "src/scene/*.cpp" "src/scene/*.h")
 
-add_library(PieceLib STATIC ${CORE} ${WINDOW} ${EVENT} ${LAYER})
+set(CORE_SOURCES
+    src/core/Application.cpp
+    src/layer/Layer.cpp
+    src/layer/LayerStack.cpp
+    src/scene/EditorCamera.cpp
+)
+
+add_library(PieceLib STATIC ${CORE} ${WINDOW} ${EVENT} ${LAYER} ${RENDERER} ${SCENE} ${CORE_SOURCES} ${CMAKE_SOURCE_DIR}/Dependencies/stb_image/stb_image.cpp)
+
+target_compile_features(PieceLib PUBLIC cxx_std_17)
+
+target_compile_definitions(PieceLib
+    PRIVATE
+        PIECE_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/shaders"
+)
 
 target_include_directories(PieceLib
     PUBLIC
@@ -21,6 +37,7 @@ target_include_directories(PieceLib
         ${Vulkan_INCLUDE_DIRS}
         ${CMAKE_SOURCE_DIR}/Dependencies/glfw/include
         ${CMAKE_SOURCE_DIR}/Dependencies/glm
+        ${CMAKE_SOURCE_DIR}/Dependencies/stb_image
 )
 
 target_link_libraries(PieceLib
@@ -34,3 +51,5 @@ source_group("Core" FILES ${CORE})
 source_group("Window" FILES ${WINDOW})
 source_group("Event" FILES ${EVENT})
 source_group("Layer" FILES ${LAYER})
+source_group("Renderer" FILES ${RENDERER})
+source_group("Scene" FILES ${SCENE})

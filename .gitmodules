@@ -4,3 +4,6 @@
 [submodule "Dependencies/GLM"]
 	path = Dependencies/GLM
 	url = https://github.com/Gamedev-Dinozavrs/glm
+[submodule "Dependencies/imgui"]
+	path = Dependencies/imgui
+	url = https://github.com/Gamedev-Dinozavrs/imgui
