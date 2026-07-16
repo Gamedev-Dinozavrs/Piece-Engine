@@ -5,10 +5,17 @@ namespace Piece {
 
 	LayerStack::LayerStack() {}
 	LayerStack::~LayerStack() {
+		Clear();
+	}
+
+	void LayerStack::Clear() {
 		for (Layer* layer : m_Layers) {
 			layer->OnDetach();
 			delete layer;
 		}
+		m_Layers.clear();
+		m_LayerCountIndex = 0;
+		m_OverlayCountIndex = 0;
 	}
 
 	void LayerStack::PushLayer(Layer* layer) {

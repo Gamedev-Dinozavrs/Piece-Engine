@@ -1,6 +1,8 @@
 #pragma once
 
 #include <vulkan/vulkan.h>
+#include <unordered_map>
+#include <vector>
 
 namespace Piece {
 
@@ -16,11 +18,12 @@ struct FrameInfo {
     VkRenderPass renderPass = VK_NULL_HANDLE;
     VkFramebuffer framebuffer = VK_NULL_HANDLE;
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
+    VkDescriptorSet globalDescriptorSet = VK_NULL_HANDLE;
+    const std::unordered_map<uint32_t, VkDescriptorSet>* materialDescriptorSets = nullptr;
 
     Pipeline* pipeline = nullptr;
-    Mesh* mesh = nullptr;
     EditorCamera* camera = nullptr;
-    RenderObject* renderObject = nullptr;
+    const std::vector<RenderObject*>* renderObjects = nullptr;
 };
 
 } // namespace Piece

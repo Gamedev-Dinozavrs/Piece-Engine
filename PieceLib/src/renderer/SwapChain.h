@@ -1,12 +1,16 @@
 #pragma once
 
 #include <renderer/Device.h>
+#include <renderer/FrameResources.h>
+#include <renderer/RenderPass.h>
 #include <vulkan/vulkan.h>
 #include <vma/vk_mem_alloc.h>
 #include <memory>
 #include <vector>
 
 namespace Piece {
+
+class RenderPass;
 
 class SwapChain {
 public:
@@ -20,7 +24,8 @@ public:
     SwapChain& operator=(const SwapChain&) = delete;
 
     VkFramebuffer getFrameBuffer(int index) { return swapChainFramebuffers[index]; }
-    VkRenderPass getRenderPass() { return renderPass; }
+    VkRenderPass getRenderPass() { return m_renderPass->get(); }
+    RenderPass& getRenderPassObject() { return *m_renderPass; }
     VkImageView getImageView(int index) { return swapChainImageViews[index]; }
     size_t imageCount() { return swapChainImages.size(); }
     VkFormat getSwapChainImageFormat() { return swapChainImageFormat; }
@@ -33,8 +38,8 @@ public:
     }
     VkFormat findDepthFormat();
 
-    VkResult acquireNextImage(uint32_t* imageIndex);
-    VkResult submitCommandBuffers(const VkCommandBuffer* buffers, uint32_t* imageIndex);
+    VkResult acquireNextImage(uint32_t* imageIndex, const FrameResources& frameResources);
+    VkResult submitCommandBuffers(const VkCommandBuffer* buffers, uint32_t* imageIndex, const FrameResources& frameResources, std::vector<VkFence>& imagesInFlight);
 
     bool compareSwapFormats(const SwapChain& swapChain) const {
         return swapChain.swapChainDepthFormat == swapChainDepthFormat &&
@@ -46,9 +51,7 @@ private:
     void createSwapChain();
     void createImageViews();
     void createDepthResources();
-    void createRenderPass();
     void createFramebuffers();
-    void createSyncObjects();
 
     // Helper functions
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
@@ -60,7 +63,7 @@ private:
     VkExtent2D swapChainExtent{};
 
     std::vector<VkFramebuffer> swapChainFramebuffers;
-    VkRenderPass renderPass{VK_NULL_HANDLE};
+    std::unique_ptr<RenderPass> m_renderPass;
 
     std::vector<VkImage> depthImages;
     std::vector<VmaAllocation> depthImageAllocations;
@@ -73,12 +76,6 @@ private:
 
     VkSwapchainKHR swapChain{VK_NULL_HANDLE};
     std::shared_ptr<SwapChain> oldSwapChain{nullptr};
-
-    std::vector<VkSemaphore> imageAvailableSemaphores;
-    std::vector<VkSemaphore> renderFinishedSemaphores;
-    std::vector<VkFence> inFlightFences;
-    std::vector<VkFence> imagesInFlight;
-    size_t currentFrame = 0;
 };
 
 } // namespace Piece

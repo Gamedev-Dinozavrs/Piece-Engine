@@ -2,6 +2,7 @@
 //inc
 
 #include "../../PieceLib/src/core/Application.h" // TODO: Add include dir
+#include <core/EntryPoint.h>
 #include "EditorLayer.h"
 
 #include <vulkan/vulkan.h>

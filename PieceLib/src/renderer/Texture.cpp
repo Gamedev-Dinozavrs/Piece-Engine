@@ -13,8 +13,12 @@ Texture::Texture(Device& device, const std::string& filepath)
     : device_(device) {
     int channels;
     stbi_uc* pixels = stbi_load(filepath.c_str(), &width_, &height_, &channels, STBI_rgb_alpha);
+    stbi_uc fallbackPixel[4] = { 255, 255, 255, 255 };
     if (!pixels) {
-        throw std::runtime_error("Failed to load texture: " + filepath);
+        width_ = 1;
+        height_ = 1;
+        channels = 4;
+        pixels = fallbackPixel;
     }
 
     VkDeviceSize imageSize = static_cast<VkDeviceSize>(width_) * static_cast<VkDeviceSize>(height_) * 4;
@@ -87,7 +91,9 @@ Texture::Texture(Device& device, const std::string& filepath)
         throw std::runtime_error("failed to create texture image view!");
     }
 
-    stbi_image_free(pixels);
+    if (pixels != fallbackPixel) {
+        stbi_image_free(pixels);
+    }
 }
 
 Texture::~Texture() {

@@ -9,6 +9,7 @@
 #include <layer/LayerStack.h>
 
 namespace Piece {
+	class ImGuiLayer;
 
 	class Application {
 	public:
@@ -22,8 +23,7 @@ namespace Piece {
 		void PushOverlay(Layer* overlay);
 
 		static Application& Get() { return *s_Instance; }
-
-		//ImGuiLayer GetImGuiLayer() { return m_ImGuiLayer; }
+		ImGuiLayer* GetImGuiLayer() { return m_ImGuiLayer; }
 
 		void Close() { m_IsRunning = false; }
 		inline Window& GetWindow() { return *m_Window; }
@@ -35,7 +35,7 @@ namespace Piece {
 
 	private:
 		Scope<Window> m_Window;
-		//ImGuiLayer* m_ImGuiLayer;
+		ImGuiLayer* m_ImGuiLayer = nullptr;
 
 		bool m_IsRunning = false;
 		bool m_IsMinimized = false;

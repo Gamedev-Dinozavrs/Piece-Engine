@@ -1,8 +1,8 @@
 #pragma once
 
 #include <renderer/Device.h>
+#include <renderer/Shader.h>
 #include <vulkan/vulkan.h>
-#include <string>
 #include <vector>
 
 namespace Piece {
@@ -18,7 +18,7 @@ namespace Piece {
         VkPipelineInputAssemblyStateCreateInfo inputAssemblyInfo;
         VkPipelineRasterizationStateCreateInfo rasterizationInfo;
         VkPipelineMultisampleStateCreateInfo multisampleInfo;
-        VkPipelineColorBlendAttachmentState colorBlendAttachment;
+        std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachments;
         VkPipelineColorBlendStateCreateInfo colorBlendInfo;
         VkPipelineDepthStencilStateCreateInfo depthStencilInfo;
         std::vector<VkDynamicState> dynamicStateEnables;
@@ -33,8 +33,8 @@ namespace Piece {
     public:
         Pipeline(
             Device& device,
-            const std::string& vertFilepath,
-            const std::string& fragFilepath,
+            const Shader& vertShader,
+            const Shader& fragShader,
             const PipelineConfigInfo& configInfo);
         ~Pipeline();
 
@@ -47,19 +47,13 @@ namespace Piece {
         static void enableAlphaBlending(PipelineConfigInfo& configInfo);
 
     private:
-        static std::vector<char> readFile(const std::string& filepath);
-
         void createGraphicsPipeline(
-            const std::string& vertFilepath,
-            const std::string& fragFilepath,
+            const Shader& vertShader,
+            const Shader& fragShader,
             const PipelineConfigInfo& configInfo);
 
-        void createShaderModule(const std::vector<char>& code, VkShaderModule* shaderModule);
-
         Device& device;
-        VkPipeline graphicsPipeline;
-        VkShaderModule vertShaderModule;
-        VkShaderModule fragShaderModule;
+        VkPipeline graphicsPipeline{VK_NULL_HANDLE};
     };
 
 }  // namespace Piece

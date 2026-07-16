@@ -19,6 +19,8 @@ public:
 
     const glm::mat4& projection() const { return m_Projection; }
     const glm::mat4& view() const { return m_View; }
+    const glm::vec3& position() const { return m_Position; }
+    const glm::vec3& focalPoint() const { return m_FocalPoint; }
 
 private:
     void updateView();

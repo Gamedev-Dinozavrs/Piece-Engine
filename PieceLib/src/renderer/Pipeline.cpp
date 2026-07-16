@@ -1,48 +1,28 @@
 #include <renderer/Pipeline.h>
+#include <scene/Mesh.h>
 #include <glm/glm.hpp>
 #include <cassert>
-#include <filesystem>
-#include <fstream>
-#include <iostream>
+#include <cstddef>
 
 namespace Piece {
 
     Pipeline::Pipeline(
         Device& deviceRef,
-        const std::string& vertFilepath,
-        const std::string& fragFilepath,
+        const Shader& vertShader,
+        const Shader& fragShader,
         const PipelineConfigInfo& configInfo)
         : device{ deviceRef } {
-        createGraphicsPipeline(vertFilepath, fragFilepath, configInfo);
+        createGraphicsPipeline(vertShader, fragShader, configInfo);
     }
 
     Pipeline::~Pipeline() {
-        vkDestroyShaderModule(device.device(), vertShaderModule, nullptr);
-        vkDestroyShaderModule(device.device(), fragShaderModule, nullptr);
+        // Shader modules are owned by Shader objects, not Pipeline.
         vkDestroyPipeline(device.device(), graphicsPipeline, nullptr);
     }
 
-    std::vector<char> Pipeline::readFile(const std::string& filepath) {
-        std::ifstream file{ filepath, std::ios::ate | std::ios::binary };
-
-        if (!file.is_open()) {
-            std::cerr << "ERROR: Failed to open shader file: " << filepath << std::endl;
-            assert(false && "Failed to open shader file");
-        }
-
-        size_t fileSize = static_cast<size_t>(file.tellg());
-        std::vector<char> buffer(fileSize);
-
-        file.seekg(0);
-        file.read(buffer.data(), fileSize);
-        file.close();
-
-        return buffer;
-    }
-
     void Pipeline::createGraphicsPipeline(
-        const std::string& vertFilepath,
-        const std::string& fragFilepath,
+        const Shader& vertShader,
+        const Shader& fragShader,
         const PipelineConfigInfo& configInfo) {
         assert(
             configInfo.pipelineLayout != VK_NULL_HANDLE &&
@@ -51,27 +31,15 @@ namespace Piece {
             configInfo.renderPass != VK_NULL_HANDLE &&
             "Cannot create graphics pipeline: no renderPass provided in configInfo");
 
-        auto vertCode = readFile(vertFilepath);
-        auto fragCode = readFile(fragFilepath);
-
-        createShaderModule(vertCode, &vertShaderModule);
-        createShaderModule(fragCode, &fragShaderModule);
-
-        VkPipelineShaderStageCreateInfo shaderStages[2];
-        shaderStages[0].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        shaderStages[0].stage = VK_SHADER_STAGE_VERTEX_BIT;
-        shaderStages[0].module = vertShaderModule;
-        shaderStages[0].pName = "main";
-        shaderStages[0].flags = 0;
-        shaderStages[0].pNext = nullptr;
-        shaderStages[0].pSpecializationInfo = nullptr;
-        shaderStages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-        shaderStages[1].stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-        shaderStages[1].module = fragShaderModule;
-        shaderStages[1].pName = "main";
-        shaderStages[1].flags = 0;
-        shaderStages[1].pNext = nullptr;
-        shaderStages[1].pSpecializationInfo = nullptr;
+        VkPipelineShaderStageCreateInfo shaderStages[2]{};
+        shaderStages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStages[0].stage  = vertShader.getVkStage();
+        shaderStages[0].module = vertShader.getModule();
+        shaderStages[0].pName  = "main";
+        shaderStages[1].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+        shaderStages[1].stage  = fragShader.getVkStage();
+        shaderStages[1].module = fragShader.getModule();
+        shaderStages[1].pName  = "main";
 
         auto& bindingDescriptions = configInfo.bindingDescriptions;
         auto& attributeDescriptions = configInfo.attributeDescriptions;
@@ -113,16 +81,6 @@ namespace Piece {
         assert(result == VK_SUCCESS && "Failed to create graphics pipeline");
     }
 
-    void Pipeline::createShaderModule(const std::vector<char>& code, VkShaderModule* shaderModule) {
-        VkShaderModuleCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-        createInfo.codeSize = code.size();
-        createInfo.pCode = reinterpret_cast<const uint32_t*>(code.data());
-
-        VkResult result = vkCreateShaderModule(device.device(), &createInfo, nullptr, shaderModule);
-        assert(result == VK_SUCCESS && "Failed to create shader module");
-    }
-
     void Pipeline::bind(VkCommandBuffer commandBuffer) {
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
     }
@@ -158,22 +116,24 @@ namespace Piece {
         configInfo.multisampleInfo.alphaToCoverageEnable = VK_FALSE;
         configInfo.multisampleInfo.alphaToOneEnable = VK_FALSE;
 
-        configInfo.colorBlendAttachment.colorWriteMask =
+        VkPipelineColorBlendAttachmentState defaultColorBlendAttachment{};
+        defaultColorBlendAttachment.colorWriteMask =
             VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT |
             VK_COLOR_COMPONENT_A_BIT;
-        configInfo.colorBlendAttachment.blendEnable = VK_FALSE;
-        configInfo.colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-        configInfo.colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
-        configInfo.colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-        configInfo.colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-        configInfo.colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-        configInfo.colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+        defaultColorBlendAttachment.blendEnable = VK_FALSE;
+        defaultColorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+        defaultColorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+        defaultColorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
+        defaultColorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        defaultColorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+        defaultColorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+        configInfo.colorBlendAttachments = {defaultColorBlendAttachment};
 
         configInfo.colorBlendInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
         configInfo.colorBlendInfo.logicOpEnable = VK_FALSE;
         configInfo.colorBlendInfo.logicOp = VK_LOGIC_OP_COPY;
-        configInfo.colorBlendInfo.attachmentCount = 1;
-        configInfo.colorBlendInfo.pAttachments = &configInfo.colorBlendAttachment;
+        configInfo.colorBlendInfo.attachmentCount = static_cast<uint32_t>(configInfo.colorBlendAttachments.size());
+        configInfo.colorBlendInfo.pAttachments = configInfo.colorBlendAttachments.data();
         configInfo.colorBlendInfo.blendConstants[0] = 0.0f;
         configInfo.colorBlendInfo.blendConstants[1] = 0.0f;
         configInfo.colorBlendInfo.blendConstants[2] = 0.0f;
@@ -198,11 +158,12 @@ namespace Piece {
         configInfo.dynamicStateInfo.flags = 0;
 
         configInfo.bindingDescriptions = {
-            {0, sizeof(glm::vec3) + sizeof(glm::vec3), VK_VERTEX_INPUT_RATE_VERTEX}
+            {0, sizeof(Vertex), VK_VERTEX_INPUT_RATE_VERTEX}
         };
         configInfo.attributeDescriptions = {
-            {0, 0, VK_FORMAT_R32G32B32_SFLOAT, 0},
-            {1, 0, VK_FORMAT_R32G32B32_SFLOAT, sizeof(glm::vec3)}
+            {0, 0, VK_FORMAT_R32G32B32_SFLOAT,  offsetof(Vertex, position)},
+            {1, 0, VK_FORMAT_R32G32B32_SFLOAT,  offsetof(Vertex, color)},
+            {2, 0, VK_FORMAT_R32G32_SFLOAT,     offsetof(Vertex, uv)}
         };
         configInfo.pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         configInfo.pushConstantRange.offset = 0;
@@ -210,16 +171,21 @@ namespace Piece {
     }
 
     void Pipeline::enableAlphaBlending(PipelineConfigInfo& configInfo) {
-        configInfo.colorBlendAttachment.blendEnable = VK_TRUE;
-        configInfo.colorBlendAttachment.colorWriteMask =
-            VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT |
-            VK_COLOR_COMPONENT_A_BIT;
-        configInfo.colorBlendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-        configInfo.colorBlendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-        configInfo.colorBlendAttachment.colorBlendOp = VK_BLEND_OP_ADD;
-        configInfo.colorBlendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-        configInfo.colorBlendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-        configInfo.colorBlendAttachment.alphaBlendOp = VK_BLEND_OP_ADD;
+        for (auto& attachment : configInfo.colorBlendAttachments) {
+            attachment.blendEnable = VK_TRUE;
+            attachment.colorWriteMask =
+                VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT |
+                VK_COLOR_COMPONENT_A_BIT;
+            attachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+            attachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+            attachment.colorBlendOp = VK_BLEND_OP_ADD;
+            attachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+            attachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+            attachment.alphaBlendOp = VK_BLEND_OP_ADD;
+        }
+
+        configInfo.colorBlendInfo.attachmentCount = static_cast<uint32_t>(configInfo.colorBlendAttachments.size());
+        configInfo.colorBlendInfo.pAttachments = configInfo.colorBlendAttachments.data();
     }
 
 }  // namespace Piece

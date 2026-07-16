@@ -2,6 +2,7 @@
 #include <core/Application.h>
 #include <core/Input.h>
 #include <renderer/Renderer.h>
+#include <renderer/ImGuiLayer.h>
 #include <window/PieceWindowGLFW.h>
 
 namespace Piece {
@@ -21,12 +22,20 @@ namespace Piece {
         Input::SetWindow(m_Window->GetNativeWindow());
 
         Renderer::Init(m_Window.get());
-
-        //imgui layer
-        //pushoverlay imgui
+        m_ImGuiLayer = new ImGuiLayer(Renderer::GetDevice(), Renderer::GetRenderPass(), Renderer::GetVulkanContext());
+        PushOverlay(m_ImGuiLayer);
+        Renderer::SetSwapChainRecreatedCallback([this]() {
+            if (m_ImGuiLayer) {
+                m_ImGuiLayer->OnSwapChainRecreated(Renderer::GetRenderPass());
+            }
+        });
     }
 
     Application::~Application() {
+        Renderer::SetSwapChainRecreatedCallback({});
+        Renderer::WaitIdle();
+        m_LayerStack.Clear();
+        m_ImGuiLayer = nullptr;
         Renderer::Shutdown();
     }
 
@@ -44,11 +53,11 @@ namespace Piece {
                     layer->OnUpdate(timestep);
                 }
 
-                //m_imguiLayer->begin();
+                m_ImGuiLayer->Begin();
                 for (Layer* layer : m_LayerStack) {
-                    //layer->onImGuiRender();
+                    layer->OnImGuiRender();
                 }
-                //m_imguiLayer->end();
+                m_ImGuiLayer->End();
 
                 Renderer::Update(timestep);
                 Renderer::DrawFrame();

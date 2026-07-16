@@ -14,6 +14,7 @@ file(GLOB EVENT CONFIGURE_DEPENDS "src/event/*.cpp" "src/event/*.h")
 file(GLOB LAYER CONFIGURE_DEPENDS "src/layer/*.cpp" "src/layer/*.h")
 file(GLOB RENDERER CONFIGURE_DEPENDS "src/renderer/*.cpp" "src/renderer/*.h")
 file(GLOB SCENE CONFIGURE_DEPENDS "src/scene/*.cpp" "src/scene/*.h")
+file(GLOB_RECURSE UTILS CONFIGURE_DEPENDS "src/utils/*.cpp" "src/utils/*.h")
 
 set(CORE_SOURCES
     src/core/Application.cpp
@@ -22,7 +23,17 @@ set(CORE_SOURCES
     src/scene/EditorCamera.cpp
 )
 
-add_library(PieceLib STATIC ${CORE} ${WINDOW} ${EVENT} ${LAYER} ${RENDERER} ${SCENE} ${CORE_SOURCES} ${CMAKE_SOURCE_DIR}/Dependencies/stb_image/stb_image.cpp)
+set(IMGUI_SOURCES
+    ${CMAKE_SOURCE_DIR}/Dependencies/imgui/imgui.cpp
+    ${CMAKE_SOURCE_DIR}/Dependencies/imgui/imgui_demo.cpp
+    ${CMAKE_SOURCE_DIR}/Dependencies/imgui/imgui_draw.cpp
+    ${CMAKE_SOURCE_DIR}/Dependencies/imgui/imgui_tables.cpp
+    ${CMAKE_SOURCE_DIR}/Dependencies/imgui/imgui_widgets.cpp
+    ${CMAKE_SOURCE_DIR}/Dependencies/imgui/backends/imgui_impl_glfw.cpp
+    ${CMAKE_SOURCE_DIR}/Dependencies/imgui/backends/imgui_impl_vulkan.cpp
+)
+
+add_library(PieceLib STATIC ${CORE} ${WINDOW} ${EVENT} ${LAYER} ${RENDERER} ${SCENE} ${UTILS} ${CORE_SOURCES} ${IMGUI_SOURCES} ${CMAKE_SOURCE_DIR}/Dependencies/stb_image/stb_image.cpp)
 
 target_compile_features(PieceLib PUBLIC cxx_std_17)
 
@@ -38,6 +49,8 @@ target_include_directories(PieceLib
         ${CMAKE_SOURCE_DIR}/Dependencies/glfw/include
         ${CMAKE_SOURCE_DIR}/Dependencies/glm
         ${CMAKE_SOURCE_DIR}/Dependencies/stb_image
+        ${CMAKE_SOURCE_DIR}/Dependencies/imgui
+        ${CMAKE_SOURCE_DIR}/Dependencies/imgui/backends
 )
 
 target_link_libraries(PieceLib
@@ -53,3 +66,4 @@ source_group("Event" FILES ${EVENT})
 source_group("Layer" FILES ${LAYER})
 source_group("Renderer" FILES ${RENDERER})
 source_group("Scene" FILES ${SCENE})
+source_group("Utils" FILES ${UTILS})

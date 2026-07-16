@@ -81,8 +81,18 @@ void Device::createLogicalDevice() {
         queueCreateInfos.push_back(queueCreateInfo);
     }
 
+    VkPhysicalDeviceFeatures supportedFeatures{};
+    vkGetPhysicalDeviceFeatures(physicalDevice, &supportedFeatures);
+
     VkPhysicalDeviceFeatures deviceFeatures = {};
     deviceFeatures.samplerAnisotropy = VK_TRUE;
+    if (supportedFeatures.sampleRateShading == VK_TRUE) {
+        deviceFeatures.sampleRateShading = VK_TRUE;
+        sampleRateShadingEnabled_ = true;
+    } else {
+        deviceFeatures.sampleRateShading = VK_FALSE;
+        sampleRateShadingEnabled_ = false;
+    }
 
     VkDeviceCreateInfo createInfo = {};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
