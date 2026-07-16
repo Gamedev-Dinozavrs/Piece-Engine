@@ -32,3 +32,4 @@ build/
 
 **/build/
 **/PieceLib/src/core/vc140.pdb      
+*.spv
