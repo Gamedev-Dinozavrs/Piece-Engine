@@ -1,10 +1,9 @@
+#include <PiecePCH.h>
+
 #include "EditorCamera.h"
 
 #include <core/Input.h>
 #include <core/InputCodes.h>
-
-#include <algorithm>
-#include <cmath>
 
 namespace Piece {
 

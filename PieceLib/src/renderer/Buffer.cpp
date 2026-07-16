@@ -1,3 +1,5 @@
+#include <PiecePCH.h>
+
 #include "Buffer.h"
 
 #include <stdexcept>

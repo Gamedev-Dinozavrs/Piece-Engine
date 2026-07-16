@@ -1,3 +1,5 @@
+#include <PiecePCH.h>
+
 #include <renderer/LightingRenderSystem.h>
 
 #include <renderer/Buffer.h>

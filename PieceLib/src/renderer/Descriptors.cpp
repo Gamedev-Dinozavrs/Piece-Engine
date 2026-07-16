@@ -1,3 +1,5 @@
+#include <PiecePCH.h>
+
 #include "Descriptors.h"
 
 #include <cassert>

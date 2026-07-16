@@ -35,6 +35,8 @@ set(IMGUI_SOURCES
 
 add_library(PieceLib STATIC ${CORE} ${WINDOW} ${EVENT} ${LAYER} ${RENDERER} ${SCENE} ${UTILS} ${CORE_SOURCES} ${IMGUI_SOURCES} ${CMAKE_SOURCE_DIR}/Dependencies/stb_image/stb_image.cpp)
 
+target_precompile_headers(PieceLib PRIVATE src/PiecePCH.h)
+
 target_compile_features(PieceLib PUBLIC cxx_std_17)
 
 target_compile_definitions(PieceLib

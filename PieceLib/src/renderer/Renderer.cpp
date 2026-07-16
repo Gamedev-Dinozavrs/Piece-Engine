@@ -1,3 +1,5 @@
+#include <PiecePCH.h>
+
 #include <renderer/Renderer.h>
 #include <renderer/Device.h>
 #include <renderer/FrameInfo.h>
@@ -20,17 +22,7 @@
 #include <scene/RenderObject.h>
 #include "imgui.h"
 #include <GLFW/glfw3.h>
-#include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <cassert>
-#include <algorithm>
-#include <array>
-#include <filesystem>
-#include <fstream>
-#include <iostream>
-#include <functional>
-#include <string>
-#include <vector>
 
 #ifndef PIECE_SHADER_DIR
 #define PIECE_SHADER_DIR "./PieceLib/src/shaders"

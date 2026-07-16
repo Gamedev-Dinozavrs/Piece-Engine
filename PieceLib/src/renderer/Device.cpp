@@ -1,3 +1,5 @@
+#include <PiecePCH.h>
+
 #define VMA_IMPLEMENTATION
 #include "Device.h"
 #include "Surface.h"

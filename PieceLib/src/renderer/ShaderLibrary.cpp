@@ -1,3 +1,5 @@
+#include <PiecePCH.h>
+
 #include "ShaderLibrary.h"
 
 #include <stdexcept>

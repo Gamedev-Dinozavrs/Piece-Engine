@@ -1,3 +1,5 @@
+#include <PiecePCH.h>
+
 #include <renderer/SceneRenderSystem.h>
 
 #include <renderer/Pipeline.h>

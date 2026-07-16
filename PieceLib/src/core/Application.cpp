@@ -1,4 +1,4 @@
-//pch
+#include <PiecePCH.h>
 #include <core/Application.h>
 #include <core/Input.h>
 #include <renderer/Renderer.h>

@@ -1,6 +1,7 @@
+#include <PiecePCH.h>
+
 #include "Mesh.h"
-#include <cstring>
-#include <stdexcept>
+
 
 namespace Piece {
 
