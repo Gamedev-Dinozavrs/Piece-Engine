@@ -1,8 +1,8 @@
 #include <PiecePCH.h>
 #include <core/Application.h>
 #include <core/Input.h>
+#include <GUI/ImGuiLayer.h>
 #include <renderer/Renderer.h>
-#include <renderer/ImGuiLayer.h>
 #include <window/PieceWindowGLFW.h>
 
 namespace Piece {

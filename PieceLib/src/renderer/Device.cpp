@@ -5,7 +5,6 @@
 #include "Surface.h"
 #include "VulkanContext.h"
 #include <cstring>
-#include <iostream>
 #include <set>
 #include <stdexcept>
 #include <unordered_set>
@@ -64,7 +63,7 @@ void Device::pickPhysicalDevice() {
     }
 
     vkGetPhysicalDeviceProperties(physicalDevice, &properties);
-    std::cout << "physical device: " << properties.deviceName << std::endl;
+    PIECE_CORE_INFO("Physical device: {}", properties.deviceName);
 }
 
 void Device::createLogicalDevice() {

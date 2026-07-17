@@ -3,15 +3,16 @@
 #include <renderer/systems/SceneRenderSystem.h>
 
 #include <renderer/Pipeline.h>
+#include <scene/Components.h>
 #include <scene/EditorCamera.h>
 #include <scene/Mesh.h>
-#include <scene/RenderObject.h>
+#include <scene/Scene.h>
 
 namespace Piece {
 
 namespace SceneRenderSystem {
 
-void Record(const FrameInfo& frameInfo) {
+void Record(const RendererContext& ctx, const FrameInfo& frameInfo) {
 	frameInfo.pipeline->bind(frameInfo.commandBuffer);
 
 	VkViewport viewport{};
@@ -28,16 +29,35 @@ void Record(const FrameInfo& frameInfo) {
 	scissor.extent = frameInfo.swapChainExtent;
 	vkCmdSetScissor(frameInfo.commandBuffer, 0, 1, &scissor);
 
-	if (!frameInfo.camera || !frameInfo.renderObjects || !frameInfo.materialDescriptorSets) {
+	if (!frameInfo.camera || !frameInfo.scene || !frameInfo.materialDescriptorSets) {
 		return;
 	}
 
-	for (RenderObject* renderObject : *frameInfo.renderObjects) {
-		if (!renderObject || !renderObject->mesh()) {
+	auto view = frameInfo.scene->GetAllEntitiesViewWith<TransformComponent, MeshRendererComponent>();
+	for (auto entityHandle : view) {
+		const auto& transform = view.get<TransformComponent>(entityHandle);
+		const auto& meshRenderer = view.get<MeshRendererComponent>(entityHandle);
+
+		std::shared_ptr<Mesh> mesh;
+		switch (meshRenderer.primitiveType) {
+		case PrimitiveType::Quad:
+			mesh = ctx.quadMesh;
+			break;
+		case PrimitiveType::Cube:
+			mesh = ctx.cubeMesh;
+			break;
+		case PrimitiveType::Sphere:
+			mesh = ctx.sphereMesh;
+			break;
+		default:
+			break;
+		}
+
+		if (!mesh) {
 			continue;
 		}
 
-		glm::mat4 model = renderObject->modelMatrix();
+		glm::mat4 model = transform.GetTransform();
 		glm::mat4 view = frameInfo.camera->view();
 		glm::mat4 proj = frameInfo.camera->projection();
 
@@ -65,7 +85,7 @@ void Record(const FrameInfo& frameInfo) {
 				nullptr);
 		}
 
-		auto dsIt = frameInfo.materialDescriptorSets->find(renderObject->objectId());
+		auto dsIt = frameInfo.materialDescriptorSets->find(static_cast<uint32_t>(entityHandle));
 		if (dsIt == frameInfo.materialDescriptorSets->end()) {
 			continue;
 		}
@@ -81,8 +101,8 @@ void Record(const FrameInfo& frameInfo) {
 			0,
 			nullptr);
 
-		renderObject->mesh()->bind(frameInfo.commandBuffer);
-		renderObject->mesh()->draw(frameInfo.commandBuffer);
+		mesh->bind(frameInfo.commandBuffer);
+		mesh->draw(frameInfo.commandBuffer);
 	}
 }
 

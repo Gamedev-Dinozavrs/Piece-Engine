@@ -16,6 +16,7 @@ namespace PrimitiveMeshDataFactory {
 
 PrimitiveMeshData CreateQuad();
 PrimitiveMeshData CreateCube();
+PrimitiveMeshData CreateSphere();
 
 } // namespace PrimitiveMeshDataFactory
 

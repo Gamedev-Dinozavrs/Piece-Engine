@@ -7,3 +7,6 @@
 [submodule "Dependencies/imgui"]
 	path = Dependencies/imgui
 	url = https://github.com/Gamedev-Dinozavrs/imgui
+[submodule "Dependencies/spdlog"]
+	path = Dependencies/spdlog
+	url = https://github.com/Gamedev-Dinozavrs/spdlog

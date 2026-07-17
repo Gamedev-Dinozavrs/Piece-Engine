@@ -6,9 +6,9 @@
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_vulkan.h"
 
-#include "Device.h"
-#include "RenderPass.h"
-#include "VulkanContext.h"
+#include <renderer/Device.h>
+#include <renderer/RenderPass.h>
+#include <renderer/VulkanContext.h>
 #include <core/Application.h>
 #include <core/Input.h>
 

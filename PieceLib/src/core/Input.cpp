@@ -19,12 +19,20 @@ bool Input::IsKeyPressed(int keycode) {
     return glfwGetKey(static_cast<GLFWwindow*>(s_Window), keycode) == GLFW_PRESS;
 }
 
+bool Input::IsKeyPressed(KeyCode keycode) {
+    return IsKeyPressed(ToInt(keycode));
+}
+
 bool Input::IsMouseButtonPressed(int button) {
     if (!s_Window) {
         return false;
     }
 
     return glfwGetMouseButton(static_cast<GLFWwindow*>(s_Window), button) == GLFW_PRESS;
+}
+
+bool Input::IsMouseButtonPressed(MouseButton button) {
+    return IsMouseButtonPressed(ToInt(button));
 }
 
 void Input::GetMousePosition(double& x, double& y) {

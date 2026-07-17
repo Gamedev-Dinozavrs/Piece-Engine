@@ -3,7 +3,6 @@
 #include <renderer/Pipeline.h>
 #include <scene/Mesh.h>
 #include <glm/glm.hpp>
-#include <cassert>
 #include <cstddef>
 
 namespace Piece {
@@ -26,11 +25,11 @@ namespace Piece {
         const Shader& vertShader,
         const Shader& fragShader,
         const PipelineConfigInfo& configInfo) {
-        assert(
-            configInfo.pipelineLayout != VK_NULL_HANDLE &&
+        PIECE_CORE_ASSERT(
+            configInfo.pipelineLayout != VK_NULL_HANDLE,
             "Cannot create graphics pipeline: no pipelineLayout provided in configInfo");
-        assert(
-            configInfo.renderPass != VK_NULL_HANDLE &&
+        PIECE_CORE_ASSERT(
+            configInfo.renderPass != VK_NULL_HANDLE,
             "Cannot create graphics pipeline: no renderPass provided in configInfo");
 
         VkPipelineShaderStageCreateInfo shaderStages[2]{};
@@ -80,7 +79,7 @@ namespace Piece {
             &pipelineInfo,
             nullptr,
             &graphicsPipeline);
-        assert(result == VK_SUCCESS && "Failed to create graphics pipeline");
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create graphics pipeline");
     }
 
     void Pipeline::bind(VkCommandBuffer commandBuffer) {

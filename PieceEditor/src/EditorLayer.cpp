@@ -2,7 +2,7 @@
 #include "EditorPlacement.h"
 
 #include "imgui.h"
-#include <renderer/Renderer.h>
+#include <scene/World.h>
 #include <utils/platform/WindowsUtils.h>
 
 #include <filesystem>
@@ -11,6 +11,19 @@
 namespace Piece {
 
 namespace {
+    const char* PrimitiveTypeLabel(PrimitiveType primitiveType) {
+        switch (primitiveType) {
+        case PrimitiveType::Quad:
+            return "Quad";
+        case PrimitiveType::Cube:
+            return "Cube";
+        case PrimitiveType::Sphere:
+            return "Sphere";
+        default:
+            return "Unknown";
+        }
+    }
+
     std::string GetDisplayFileName(const std::string& path) {
         if (path.empty()) {
             return "None";
@@ -88,30 +101,61 @@ void EditorLayer::OnImGuiRender() {
     ImGui::End();
 
     ImGui::Begin("Scene");
-    ImGui::Text("Editor skeleton");
-    if (ImGui::Button("Create Quad")) {
-        EditorPlacement::SpawnQuadInView();
-    }
+    static int selectedPrimitiveIndex = 0;
+    static char newMaterialName[128] = "Material";
+
+    const char* primitiveOptions[] = {"Quad", "Cube", "Sphere"};
+    ImGui::Text("Spawn Primitive");
+    ImGui::SetNextItemWidth(160.0f);
+    ImGui::Combo("##primitive-type", &selectedPrimitiveIndex, primitiveOptions, IM_ARRAYSIZE(primitiveOptions));
     ImGui::SameLine();
-    if (ImGui::Button("Create Cube")) {
-        EditorPlacement::SpawnCubeInView();
+    if (ImGui::Button("Spawn")) {
+        PrimitiveType primitiveType = PrimitiveType::Quad;
+        if (selectedPrimitiveIndex == 1) {
+            primitiveType = PrimitiveType::Cube;
+        } else if (selectedPrimitiveIndex == 2) {
+            primitiveType = PrimitiveType::Sphere;
+        }
+        EditorPlacement::SpawnPrimitiveInView(primitiveType);
     }
 
     ImGui::Separator();
     if (ImGui::TreeNode("Lighting")) {
-        auto lighting = Renderer::GetLightingSettings();
+        auto lighting = World::GetLightingSettings();
         bool changed = false;
 
         if (ImGui::Button("Create Point Light")) {
             EditorPlacement::SpawnPointLightInView();
-            lighting = Renderer::GetLightingSettings();
+            lighting = World::GetLightingSettings();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Reset Directional")) {
-            Renderer::ResetDirectionalLight();
-            lighting = Renderer::GetLightingSettings();
+        if (!lighting.directionalEnabled) {
+            if (ImGui::Button("Create Directional Light")) {
+                lighting.directionalEnabled = true;
+                lighting.directionalDirection = {-0.4f, -1.0f, -0.2f};
+                lighting.directionalColor = {1.0f, 0.98f, 0.9f};
+                lighting.directionalIntensity = 1.2f;
+                World::SetLightingSettings(lighting);
+                lighting = World::GetLightingSettings();
+            }
+        } else {
+            if (ImGui::Button("Reset Directional")) {
+                lighting.directionalEnabled = true;
+                lighting.directionalDirection = {-0.4f, -1.0f, -0.2f};
+                lighting.directionalColor = {1.0f, 0.98f, 0.9f};
+                lighting.directionalIntensity = 1.2f;
+                World::SetLightingSettings(lighting);
+                lighting = World::GetLightingSettings();
+            }
         }
         ImGui::SameLine();
+        if (lighting.directionalEnabled) {
+            if (ImGui::Button("Remove Directional")) {
+                lighting.directionalEnabled = false;
+                changed = true;
+            }
+            ImGui::SameLine();
+        }
         ImGui::BeginDisabled(true);
         ImGui::Button("Create Spot Light");
         ImGui::EndDisabled();
@@ -129,10 +173,14 @@ void EditorLayer::OnImGuiRender() {
             }
         }
 
-        ImGui::Text("Directional Light");
-        changed |= ImGui::DragFloat3("Direction", &lighting.directionalDirection.x, 0.02f, -1.0f, 1.0f, "%.2f");
-        changed |= ImGui::ColorEdit3("Direction Color", &lighting.directionalColor.x);
-        changed |= ImGui::DragFloat("Direction Intensity", &lighting.directionalIntensity, 0.05f, 0.0f, 50.0f, "%.2f");
+        if (lighting.directionalEnabled) {
+            ImGui::Text("Directional Light");
+            changed |= ImGui::DragFloat3("Direction", &lighting.directionalDirection.x, 0.02f, -1.0f, 1.0f, "%.2f");
+            changed |= ImGui::ColorEdit3("Direction Color", &lighting.directionalColor.x);
+            changed |= ImGui::DragFloat("Direction Intensity", &lighting.directionalIntensity, 0.05f, 0.0f, 50.0f, "%.2f");
+        } else {
+            ImGui::TextDisabled("No directional light");
+        }
 
         ImGui::Separator();
         ImGui::Text("Specular");
@@ -154,64 +202,123 @@ void EditorLayer::OnImGuiRender() {
         }
 
         if (changed) {
-            Renderer::SetLightingSettings(lighting);
+            World::SetLightingSettings(lighting);
         }
 
         ImGui::TreePop();
     }
 
     ImGui::Separator();
-    ImGui::Text("Quads");
-
-    auto quadMaterials = Renderer::GetQuadMaterials();
-    if (quadMaterials.empty()) {
-        ImGui::TextDisabled("No quads in scene");
+    ImGui::Text("Materials");
+    ImGui::InputText("Material Name", newMaterialName, sizeof(newMaterialName));
+    if (ImGui::Button("Create Material")) {
+        World::CreateMaterial(newMaterialName);
     }
 
     const char* imageFilter = "Image Files\0*.png;*.jpg;*.jpeg;*.bmp;*.tga\0All Files\0*.*\0";
+    auto materials = World::GetMaterials();
+    if (materials.empty()) {
+        ImGui::TextDisabled("No materials created");
+    }
 
-    for (const auto& quad : quadMaterials) {
-        ImGui::PushID(static_cast<int>(quad.id));
+    for (auto& material : materials) {
+        ImGui::PushID(static_cast<int>(material.id));
+        if (ImGui::TreeNode(material.name.c_str())) {
+            ImGui::Text("Albedo: %s", GetDisplayFileName(material.textures.albedoPath).c_str());
+            if (ImGui::Button("Set Albedo")) {
+                std::string selected = Platform::OpenFileDialog(imageFilter);
+                if (!selected.empty()) {
+                    World::SetMaterialTexturePath(material.id, TextureSlot::Albedo, selected);
+                }
+            }
 
-        std::string label = "Quad #" + std::to_string(quad.id);
+            ImGui::Text("Normal: %s", GetDisplayFileName(material.textures.normalPath).c_str());
+            if (ImGui::Button("Set Normal")) {
+                std::string selected = Platform::OpenFileDialog(imageFilter);
+                if (!selected.empty()) {
+                    World::SetMaterialTexturePath(material.id, TextureSlot::Normal, selected);
+                }
+            }
+
+            ImGui::Text("Height: %s", GetDisplayFileName(material.textures.heightPath).c_str());
+            if (ImGui::Button("Set Height")) {
+                std::string selected = Platform::OpenFileDialog(imageFilter);
+                if (!selected.empty()) {
+                    World::SetMaterialTexturePath(material.id, TextureSlot::Height, selected);
+                }
+            }
+
+            ImGui::Text("Roughness: %s", GetDisplayFileName(material.textures.roughnessPath).c_str());
+            if (ImGui::Button("Set Roughness")) {
+                std::string selected = Platform::OpenFileDialog(imageFilter);
+                if (!selected.empty()) {
+                    World::SetMaterialTexturePath(material.id, TextureSlot::Roughness, selected);
+                }
+            }
+
+            ImGui::Text("Ambient Occlusion: %s", GetDisplayFileName(material.textures.ambientOcclusionPath).c_str());
+            if (ImGui::Button("Set AO")) {
+                std::string selected = Platform::OpenFileDialog(imageFilter);
+                if (!selected.empty()) {
+                    World::SetMaterialTexturePath(material.id, TextureSlot::AmbientOcclusion, selected);
+                }
+            }
+
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
+    }
+
+    ImGui::Separator();
+    ImGui::Text("Objects");
+    auto entities = World::GetRenderEntities();
+    if (entities.empty()) {
+        ImGui::TextDisabled("No renderable objects in scene");
+    }
+
+    for (auto& entity : entities) {
+        ImGui::PushID(static_cast<int>(entity.id));
+        std::string label = entity.name + " (" + PrimitiveTypeLabel(entity.primitiveType) + ")";
         if (ImGui::TreeNode(label.c_str())) {
-            ImGui::Text("Albedo: %s", GetDisplayFileName(quad.albedoPath).c_str());
-            if (ImGui::Button("Upload Albedo")) {
-                std::string selected = Platform::OpenFileDialog(imageFilter);
-                if (!selected.empty()) {
-                    Renderer::SetQuadTexturePath(quad.id, TextureSlot::Albedo, selected);
-                }
+            bool transformChanged = false;
+            transformChanged |= ImGui::DragFloat3("Position", &entity.transform.position.x, 0.05f, -50.0f, 50.0f, "%.2f");
+            transformChanged |= ImGui::DragFloat3("Rotation", &entity.transform.rotation.x, 0.5f, -360.0f, 360.0f, "%.1f");
+            transformChanged |= ImGui::DragFloat3("Scale", &entity.transform.scale.x, 0.05f, 0.01f, 100.0f, "%.2f");
+            if (transformChanged) {
+                World::SetEntityTransform(entity.id, entity.transform);
             }
 
-            ImGui::Text("Normal (Blue): %s", GetDisplayFileName(quad.normalPath).c_str());
-            if (ImGui::Button("Upload Normal")) {
-                std::string selected = Platform::OpenFileDialog(imageFilter);
-                if (!selected.empty()) {
-                    Renderer::SetQuadTexturePath(quad.id, TextureSlot::Normal, selected);
+            if (materials.empty()) {
+                ImGui::TextDisabled("No materials available");
+            } else {
+                int currentMaterialIndex = -1;
+                for (size_t i = 0; i < materials.size(); ++i) {
+                    if (materials[i].id == entity.materialId) {
+                        currentMaterialIndex = static_cast<int>(i);
+                        break;
+                    }
                 }
-            }
 
-            ImGui::Text("Height: %s", GetDisplayFileName(quad.heightPath).c_str());
-            if (ImGui::Button("Upload Height")) {
-                std::string selected = Platform::OpenFileDialog(imageFilter);
-                if (!selected.empty()) {
-                    Renderer::SetQuadTexturePath(quad.id, TextureSlot::Height, selected);
+                const char* preview = "None";
+                if (currentMaterialIndex >= 0) {
+                    preview = materials[static_cast<size_t>(currentMaterialIndex)].name.c_str();
                 }
-            }
 
-            ImGui::Text("Roughness: %s", GetDisplayFileName(quad.roughnessPath).c_str());
-            if (ImGui::Button("Upload Roughness")) {
-                std::string selected = Platform::OpenFileDialog(imageFilter);
-                if (!selected.empty()) {
-                    Renderer::SetQuadTexturePath(quad.id, TextureSlot::Roughness, selected);
-                }
-            }
+                if (ImGui::BeginCombo("Material", preview)) {
+                    if (ImGui::Selectable("None", currentMaterialIndex == -1)) {
+                        World::SetEntityMaterial(entity.id, 0);
+                        currentMaterialIndex = -1;
+                    }
 
-            ImGui::Text("Ambient Occlusion: %s", GetDisplayFileName(quad.ambientOcclusionPath).c_str());
-            if (ImGui::Button("Upload AO")) {
-                std::string selected = Platform::OpenFileDialog(imageFilter);
-                if (!selected.empty()) {
-                    Renderer::SetQuadTexturePath(quad.id, TextureSlot::AmbientOcclusion, selected);
+                    for (size_t i = 0; i < materials.size(); ++i) {
+                        const bool selected = currentMaterialIndex == static_cast<int>(i);
+                        if (ImGui::Selectable(materials[i].name.c_str(), selected)) {
+                            World::SetEntityMaterial(entity.id, materials[i].id);
+                            currentMaterialIndex = static_cast<int>(i);
+                        }
+                    }
+
+                    ImGui::EndCombo();
                 }
             }
 

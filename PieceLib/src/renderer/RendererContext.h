@@ -11,6 +11,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include <core/Core.h>
+
 namespace Piece {
 
 class Window;
@@ -21,7 +23,7 @@ class SwapChain;
 class Pipeline;
 class Mesh;
 class EditorCamera;
-class RenderObject;
+class Scene;
 class DescriptorSetLayout;
 class DescriptorPool;
 class Texture;
@@ -73,8 +75,9 @@ struct RendererContext {
 
     std::shared_ptr<Mesh> quadMesh;
     std::shared_ptr<Mesh> cubeMesh;
+    std::shared_ptr<Mesh> sphereMesh;
     std::shared_ptr<EditorCamera> camera;
-    std::vector<std::shared_ptr<RenderObject>> renderObjects;
+    Ref<Scene> scene;
 
     std::unique_ptr<DescriptorSetLayout> materialSetLayout;
     std::unique_ptr<DescriptorPool> materialDescriptorPool;
@@ -114,7 +117,6 @@ struct RendererContext {
     std::vector<FrameResources> frameResources;
     std::vector<VkFence> imagesInFlight;
     size_t currentFrame{0};
-    uint32_t nextObjectId{1};
 
 };
 

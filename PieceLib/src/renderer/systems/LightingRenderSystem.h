@@ -1,6 +1,6 @@
 #pragma once
 
-#include <renderer/Renderer.h>
+#include <scene/World.h>
 
 namespace Piece {
 

@@ -233,7 +233,7 @@ void CreateGeometryRenderPass(RendererContext &ctx)
         renderPassInfo.pDependencies = dependencies.data();
 
         VkResult result = vkCreateRenderPass(ctx.device, &renderPassInfo, nullptr, &ctx.geometryRenderPass);
-        assert(result == VK_SUCCESS);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create geometry render pass");
         return;
     }
 
@@ -369,7 +369,7 @@ void CreateGeometryRenderPass(RendererContext &ctx)
     renderPassInfo.pDependencies = dependencies.data();
 
     VkResult result = vkCreateRenderPass(ctx.device, &renderPassInfo, nullptr, &ctx.geometryRenderPass);
-    assert(result == VK_SUCCESS);
+    PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create MSAA geometry render pass");
 }
 
 void CreateOffscreenResources(RendererContext &ctx)
@@ -420,7 +420,7 @@ void CreateOffscreenResources(RendererContext &ctx)
             viewInfo.subresourceRange.baseArrayLayer = 0;
             viewInfo.subresourceRange.layerCount = 1;
             VkResult viewResult = vkCreateImageView(ctx.device, &viewInfo, nullptr, &outView);
-            assert(viewResult == VK_SUCCESS);
+            PIECE_CORE_ASSERT(viewResult == VK_SUCCESS, "Failed to create offscreen color image view");
         };
 
         if (ctx.msaaSamples == VK_SAMPLE_COUNT_1_BIT)
@@ -501,7 +501,7 @@ void CreateOffscreenResources(RendererContext &ctx)
         }
 
         VkResult result = VK_SUCCESS;
-        assert(result == VK_SUCCESS);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Unexpected offscreen setup failure");
 
         VkFormat depthFormat = ctx.swapChainWrapper->findDepthFormat();
         VkImageCreateInfo depthImageInfo{};
@@ -536,7 +536,7 @@ void CreateOffscreenResources(RendererContext &ctx)
         depthViewInfo.subresourceRange.baseArrayLayer = 0;
         depthViewInfo.subresourceRange.layerCount = 1;
         result = vkCreateImageView(ctx.device, &depthViewInfo, nullptr, &frame.depthImageView);
-        assert(result == VK_SUCCESS);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create offscreen depth image view");
 
         std::array<VkImageView, 7> attachments{};
         uint32_t attachmentCount = 0;
@@ -574,7 +574,7 @@ void CreateOffscreenResources(RendererContext &ctx)
         framebufferInfo.height = ctx.swapChainExtent.height;
         framebufferInfo.layers = 1;
         result = vkCreateFramebuffer(ctx.device, &framebufferInfo, nullptr, &frame.framebuffer);
-        assert(result == VK_SUCCESS);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create offscreen framebuffer");
     }
 }
 
@@ -595,7 +595,7 @@ void CreateCompositeResources(RendererContext &ctx)
         samplerInfo.minLod = 0.0f;
         samplerInfo.maxLod = 0.0f;
         VkResult result = vkCreateSampler(ctx.device, &samplerInfo, nullptr, &ctx.compositeSampler);
-        assert(result == VK_SUCCESS);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create composite sampler");
     }
 
     const uint32_t imageCount = static_cast<uint32_t>(ctx.offscreenFrames.size());
@@ -616,7 +616,7 @@ void CreateCompositeResources(RendererContext &ctx)
         const bool allocated = ctx.compositeDescriptorPool->allocateDescriptor(
             ctx.compositeSetLayout->getDescriptorSetLayout(),
             ctx.compositeDescriptorSets[i]);
-        assert(allocated);
+        PIECE_CORE_ASSERT(allocated, "Failed to allocate composite descriptor set");
 
         VkDescriptorImageInfo worldPosRoughnessInfo{};
         worldPosRoughnessInfo.sampler = ctx.compositeSampler;

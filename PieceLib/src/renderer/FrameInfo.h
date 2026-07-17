@@ -9,7 +9,7 @@ namespace Piece {
 class EditorCamera;
 class Mesh;
 class Pipeline;
-class RenderObject;
+class Scene;
 
 struct FrameInfo {
     VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
@@ -23,7 +23,7 @@ struct FrameInfo {
 
     Pipeline* pipeline = nullptr;
     EditorCamera* camera = nullptr;
-    const std::vector<RenderObject*>* renderObjects = nullptr;
+    Scene* scene = nullptr;
 };
 
 } // namespace Piece

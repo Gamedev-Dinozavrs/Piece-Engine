@@ -8,10 +8,10 @@
 #include <renderer/RendererContext.h>
 #include <renderer/SwapChain.h>
 #include <scene/EditorCamera.h>
+#include <scene/World.h>
 
 #include <algorithm>
 #include <array>
-#include <cassert>
 
 namespace Piece {
 
@@ -33,35 +33,30 @@ struct LightingUbo {
 	glm::vec4 specularParams{1.0f, 8.0f, 128.0f, 0.0f};
 };
 
-LightingSettings DefaultLightingSettings() {
-	LightingSettings settings{};
-	settings.pointLightCount = 0;
-	return settings;
-}
-
-LightingSettings s_LightingSettings = DefaultLightingSettings();
-
 LightingUbo BuildLightingUbo(const RendererContext& ctx) {
 	LightingUbo ubo{};
+	LightingSettings lighting = World::GetLightingSettings();
 
 	if (ctx.camera) {
 		ubo.cameraPosition = glm::vec4(ctx.camera->position(), 0.0f);
 	}
 
-	ubo.dirLightDirection = glm::vec4(s_LightingSettings.directionalDirection, 0.0f);
-	ubo.dirLightColorIntensity = glm::vec4(s_LightingSettings.directionalColor, s_LightingSettings.directionalIntensity);
+	ubo.dirLightDirection = glm::vec4(lighting.directionalDirection, 0.0f);
+	ubo.dirLightColorIntensity = glm::vec4(
+		lighting.directionalColor,
+		lighting.directionalEnabled ? lighting.directionalIntensity : 0.0f);
 
-	const uint32_t lightCount = std::min<uint32_t>(s_LightingSettings.pointLightCount, kMaxPointLights);
+	const uint32_t lightCount = std::min<uint32_t>(lighting.pointLightCount, kMaxPointLights);
 	for (uint32_t i = 0; i < lightCount; ++i) {
-		const auto& src = s_LightingSettings.pointLights[i];
+		const auto& src = lighting.pointLights[i];
 		ubo.pointLights[i].positionRadius = glm::vec4(src.position, src.radius);
 		ubo.pointLights[i].colorIntensity = glm::vec4(src.color, src.intensity);
 	}
 	ubo.pointLightCount.x = static_cast<int>(lightCount);
 
-	float minShininess = std::max(1.0f, s_LightingSettings.specularShininessMin);
-	float maxShininess = std::max(minShininess, s_LightingSettings.specularShininessMax);
-	ubo.specularParams = glm::vec4(s_LightingSettings.specularStrength, minShininess, maxShininess, 0.0f);
+	float minShininess = std::max(1.0f, lighting.specularShininessMin);
+	float maxShininess = std::max(minShininess, lighting.specularShininessMax);
+	ubo.specularParams = glm::vec4(lighting.specularStrength, minShininess, maxShininess, 0.0f);
 
 	return ubo;
 }
@@ -95,7 +90,7 @@ void Initialize(RendererContext& ctx) {
 		bool allocated = ctx.globalDescriptorPool->allocateDescriptor(
 			ctx.globalSetLayout->getDescriptorSetLayout(),
 			ctx.globalDescriptorSets[i]);
-		assert(allocated && "Failed to allocate global lighting descriptor set");
+		PIECE_CORE_ASSERT(allocated, "Failed to allocate global lighting descriptor set");
 
 		VkDescriptorBufferInfo bufferInfo = ctx.globalUboBuffers[i]->descriptorInfo(sizeof(LightingUbo));
 		DescriptorWriter(*ctx.globalSetLayout, *ctx.globalDescriptorPool)
@@ -160,21 +155,11 @@ void RecordComposite(
 }
 
 LightingSettings GetSettings() {
-	return s_LightingSettings;
+	return World::GetLightingSettings();
 }
 
 void SetSettings(const LightingSettings& settings) {
-	s_LightingSettings = settings;
-	s_LightingSettings.pointLightCount = std::min<uint32_t>(s_LightingSettings.pointLightCount, kMaxPointLights);
-	s_LightingSettings.directionalIntensity = std::max(0.0f, s_LightingSettings.directionalIntensity);
-	s_LightingSettings.specularStrength = std::max(0.0f, s_LightingSettings.specularStrength);
-	s_LightingSettings.specularShininessMin = std::max(1.0f, s_LightingSettings.specularShininessMin);
-	s_LightingSettings.specularShininessMax = std::max(s_LightingSettings.specularShininessMin, s_LightingSettings.specularShininessMax);
-
-	for (uint32_t i = 0; i < kMaxPointLights; ++i) {
-		s_LightingSettings.pointLights[i].radius = std::max(0.01f, s_LightingSettings.pointLights[i].radius);
-		s_LightingSettings.pointLights[i].intensity = std::max(0.0f, s_LightingSettings.pointLights[i].intensity);
-	}
+	World::SetLightingSettings(settings);
 }
 
 } // namespace LightingRenderSystem

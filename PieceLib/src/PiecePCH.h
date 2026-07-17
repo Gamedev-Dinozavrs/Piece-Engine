@@ -23,7 +23,8 @@
 #include <vulkan/vulkan.h>
 #include <glm/glm.hpp>
 
-// #include "src/core/Log.h" // TODO:
+#include <core/Core.h>
+#include <core/Log.h>
 
 // #include "src/debug/Instrumentor.h" // TODO:
 

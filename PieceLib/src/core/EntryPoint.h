@@ -1,13 +1,15 @@
 #pragma once
 
-#include <iostream>
+#include <core/Application.h>
+#include <core/Log.h>
 
 extern Piece::Application* Piece::CreateApplication();
 
 #ifdef PLATFORM_WINDOWS
 
 int main(int argc, char** argv) {
-	std::cout << "Running Piece on Windows!\n";
+	Piece::Log::init();
+	PIECE_CORE_INFO("Running Piece on Windows");
 	auto app = Piece::CreateApplication();
 	app->Run();
 	delete app;
@@ -16,13 +18,15 @@ int main(int argc, char** argv) {
 #elif PLATFORM_LINUX
 
 int main(int argc, char** argv) {
-	std::cout << "Running Piece on Linux!\n";
+	Piece::Log::init();
+	PIECE_CORE_INFO("Running Piece on Linux");
 }
 
 #elif PLATFORM_MAC
 
 int main(int argc, char** argv) {
-	std::cout << Running Piece on "Mac!\n";
+	Piece::Log::init();
+	PIECE_CORE_INFO("Running Piece on Mac");
 }
 
 #endif

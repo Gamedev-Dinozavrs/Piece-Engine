@@ -12,7 +12,8 @@ namespace Piece {
 enum class PrimitiveType {
     Unknown = 0,
     Quad,
-    Cube
+    Cube,
+    Sphere
 };
 
 struct MaterialTextures {

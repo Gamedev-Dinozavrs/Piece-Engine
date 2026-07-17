@@ -1,6 +1,7 @@
 #pragma once
 
 #include <renderer/FrameInfo.h>
+#include <renderer/RendererContext.h>
 #include <glm/glm.hpp>
 
 namespace Piece {
@@ -12,7 +13,7 @@ struct ScenePushConstants {
 
 namespace SceneRenderSystem {
 
-void Record(const FrameInfo& frameInfo);
+void Record(const RendererContext& ctx, const FrameInfo& frameInfo);
 
 } // namespace SceneRenderSystem
 

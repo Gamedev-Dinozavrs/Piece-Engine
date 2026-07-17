@@ -31,7 +31,7 @@ void Record(const RendererContext& ctx, const FrameInfo& frameInfo) {
 	geometryFrameInfo.framebuffer = ctx.offscreenFrames[frameInfo.imageIndex].framebuffer;
 	geometryFrameInfo.pipelineLayout = ctx.geometryPipelineLayout;
 	geometryFrameInfo.pipeline = ctx.geometryPipeline.get();
-	SceneRenderSystem::Record(geometryFrameInfo);
+	SceneRenderSystem::Record(ctx, geometryFrameInfo);
 
 	vkCmdEndRenderPass(frameInfo.commandBuffer);
 }

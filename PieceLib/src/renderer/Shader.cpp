@@ -2,9 +2,7 @@
 
 #include "Shader.h"
 
-#include <cassert>
 #include <fstream>
-#include <iostream>
 #include <stdexcept>
 
 namespace Piece {
@@ -40,7 +38,7 @@ VkShaderStageFlagBits Shader::getVkStage() const {
         case Stage::TessControl: return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
         case Stage::TessEval:    return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
         default:
-            assert(false && "Unknown shader stage");
+            PIECE_CORE_ASSERT(false, "Unknown shader stage");
             return VK_SHADER_STAGE_VERTEX_BIT;
     }
 }
@@ -48,7 +46,7 @@ VkShaderStageFlagBits Shader::getVkStage() const {
 std::vector<char> Shader::readFile(const std::string& filepath) {
     std::ifstream file{filepath, std::ios::ate | std::ios::binary};
     if (!file.is_open()) {
-        std::cerr << "ERROR: Failed to open shader file: " << filepath << "\n";
+        PIECE_CORE_ERROR("Failed to open shader file: {}", filepath);
         throw std::runtime_error("Failed to open shader file: " + filepath);
     }
 

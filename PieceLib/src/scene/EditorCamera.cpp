@@ -3,7 +3,8 @@
 #include "EditorCamera.h"
 
 #include <core/Input.h>
-#include <core/InputCodes.h>
+#include <core/KeyCodes.h>
+#include <core/MouseButtonCodes.h>
 
 namespace Piece {
 
@@ -16,25 +17,25 @@ EditorCamera::EditorCamera(float fovY, float aspectRatio, float nearClip, float 
 void EditorCamera::onUpdate(float deltaTime) {
     updateInputState();
 
-    const float movementSpeed = m_MoveSpeed * (Input::IsKeyPressed(Key::LeftShift) ? m_FastMultiplier : 1.0f);
+    const float movementSpeed = m_MoveSpeed * (Input::IsKeyPressed(KeyCode::LeftShift) ? m_FastMultiplier : 1.0f);
     const float step = movementSpeed * deltaTime;
 
-    if (Input::IsKeyPressed(Key::W)) {
+    if (Input::IsKeyPressed(KeyCode::W)) {
         m_FocalPoint += getForwardDirection() * step;
     }
-    if (Input::IsKeyPressed(Key::S)) {
+    if (Input::IsKeyPressed(KeyCode::S)) {
         m_FocalPoint -= getForwardDirection() * step;
     }
-    if (Input::IsKeyPressed(Key::D)) {
+    if (Input::IsKeyPressed(KeyCode::D)) {
         m_FocalPoint += getRightDirection() * step;
     }
-    if (Input::IsKeyPressed(Key::A)) {
+    if (Input::IsKeyPressed(KeyCode::A)) {
         m_FocalPoint -= getRightDirection() * step;
     }
-    if (Input::IsKeyPressed(Key::E)) {
+    if (Input::IsKeyPressed(KeyCode::E)) {
         m_FocalPoint += getUpDirection() * step;
     }
-    if (Input::IsKeyPressed(Key::Q)) {
+    if (Input::IsKeyPressed(KeyCode::Q)) {
         m_FocalPoint -= getUpDirection() * step;
     }
 

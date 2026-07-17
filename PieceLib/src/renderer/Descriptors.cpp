@@ -2,13 +2,12 @@
 
 #include "Descriptors.h"
 
-#include <cassert>
 #include <stdexcept>
 
 namespace Piece {
 
 DescriptorSetLayout::Builder& DescriptorSetLayout::Builder::addBinding(uint32_t binding, VkDescriptorType descriptorType, VkShaderStageFlags stageFlags, uint32_t count) {
-    assert(bindings.count(binding) == 0 && "Binding already in use");
+    PIECE_CORE_ASSERT(bindings.count(binding) == 0, "Binding already in use");
 
     VkDescriptorSetLayoutBinding layoutBinding{};
     layoutBinding.binding = binding;
@@ -108,10 +107,10 @@ DescriptorWriter::DescriptorWriter(DescriptorSetLayout& setLayout, DescriptorPoo
     : setLayout{ setLayout }, pool{ pool } {}
 
 DescriptorWriter& DescriptorWriter::writeBuffer(uint32_t binding, VkDescriptorBufferInfo* bufferInfo) {
-    assert(setLayout.bindings.count(binding) == 1 && "Layout does not contain specified binding");
+    PIECE_CORE_ASSERT(setLayout.bindings.count(binding) == 1, "Layout does not contain specified binding");
 
     auto& bindingDescription = setLayout.bindings[binding];
-    assert(bindingDescription.descriptorCount == 1 && "Binding single descriptor info, but binding expects multiple");
+    PIECE_CORE_ASSERT(bindingDescription.descriptorCount == 1, "Binding single descriptor info, but binding expects multiple");
 
     VkWriteDescriptorSet write{};
     write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -125,10 +124,10 @@ DescriptorWriter& DescriptorWriter::writeBuffer(uint32_t binding, VkDescriptorBu
 }
 
 DescriptorWriter& DescriptorWriter::writeImage(uint32_t binding, VkDescriptorImageInfo* imageInfo) {
-    assert(setLayout.bindings.count(binding) == 1 && "Layout does not contain specified binding");
+    PIECE_CORE_ASSERT(setLayout.bindings.count(binding) == 1, "Layout does not contain specified binding");
 
     auto& bindingDescription = setLayout.bindings[binding];
-    assert(bindingDescription.descriptorCount == 1 && "Binding single descriptor info, but binding expects multiple");
+    PIECE_CORE_ASSERT(bindingDescription.descriptorCount == 1, "Binding single descriptor info, but binding expects multiple");
 
     VkWriteDescriptorSet write{};
     write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;

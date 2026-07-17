@@ -19,10 +19,13 @@
 #include <renderer/systems/SceneRenderSystem.h>
 #include <renderer/passes/GeometryPass.h>
 #include <renderer/passes/LightingPass.h>
+#include <scene/Components.h>
 #include <scene/EditorCamera.h>
+#include <scene/Entity.h>
 #include <scene/Mesh.h>
 #include <scene/PrimitiveMeshData.h>
-#include <scene/RenderObject.h>
+#include <scene/Scene.h>
+#include <scene/World.h>
 #include "imgui.h"
 #include <GLFW/glfw3.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -39,13 +42,9 @@ namespace Piece
         std::unique_ptr<RendererContext> s_Context = nullptr;
         std::function<void()> s_SwapChainRecreatedCallback = nullptr;
 
-        constexpr glm::vec3 kDefaultDirectionalDirection{-0.4f, -1.0f, -0.2f};
-        constexpr glm::vec3 kDefaultDirectionalColor{1.0f, 0.98f, 0.9f};
-        constexpr float kDefaultDirectionalIntensity = 1.2f;
-
         VkExtent2D GetValidSwapChainExtent(Window *window)
         {
-            assert(window && "Window must not be null");
+            PIECE_CORE_ASSERT(window != nullptr, "Window must not be null");
 
             uint32_t width = window->GetWidth();
             uint32_t height = window->GetHeight();
@@ -79,11 +78,10 @@ namespace Piece
             return texture;
         }
 
-        void EnsureObjectMaterialDescriptor(RendererContext &ctx, const RenderObject &renderObject)
+        void EnsureObjectMaterialDescriptor(RendererContext &ctx, uint32_t objectId, uint32_t materialId, const MaterialTextures &material)
         {
-            const uint32_t objectId = renderObject.objectId();
-            const MaterialTextures &material = renderObject.materialTextures();
-            const std::string materialSignature = MakeMaterialSignature(material);
+            const MaterialTextures resolvedMaterial = World::ResolveMaterialTextures(materialId, material);
+            const std::string materialSignature = MakeMaterialSignature(resolvedMaterial);
             const bool hasDescriptor = ctx.objectMaterialDescriptors.find(objectId) != ctx.objectMaterialDescriptors.end();
             const bool pathChanged = ctx.objectBoundMaterialSignature[objectId] != materialSignature;
 
@@ -96,13 +94,13 @@ namespace Piece
             {
                 VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
                 const bool allocated = ctx.materialDescriptorPool->allocateDescriptor(ctx.materialSetLayout->getDescriptorSetLayout(), descriptorSet);
-                assert(allocated && "Failed to allocate material descriptor set");
+                PIECE_CORE_ASSERT(allocated, "Failed to allocate material descriptor set");
                 ctx.objectMaterialDescriptors[objectId] = descriptorSet;
             }
 
-            auto albedoTexture = GetOrCreateTexture(ctx, material.albedoPath);
-            auto roughnessTexture = GetOrCreateTexture(ctx, material.roughnessPath);
-            auto aoTexture = GetOrCreateTexture(ctx, material.ambientOcclusionPath);
+            auto albedoTexture = GetOrCreateTexture(ctx, resolvedMaterial.albedoPath);
+            auto roughnessTexture = GetOrCreateTexture(ctx, resolvedMaterial.roughnessPath);
+            auto aoTexture = GetOrCreateTexture(ctx, resolvedMaterial.ambientOcclusionPath);
 
             VkDescriptorImageInfo albedoImageInfo{};
             albedoImageInfo.sampler = albedoTexture->getSampler();
@@ -127,36 +125,37 @@ namespace Piece
             ctx.objectBoundMaterialSignature[objectId] = materialSignature;
         }
 
-        void SpawnPrimitiveAtCameraTarget(const std::shared_ptr<Mesh> &mesh, PrimitiveType primitiveType)
-        {
-            if (!s_Context || !mesh || !s_Context->camera)
-            {
-                return;
-            }
-
-            RendererContext &ctx = *s_Context;
-            const glm::vec3 spawnPosition = ctx.camera->focalPoint();
-            auto object = std::make_shared<RenderObject>(mesh, primitiveType, ctx.nextObjectId++, spawnPosition, glm::vec3(0.0f), glm::vec3(1.0f));
-            ctx.renderObjects.push_back(object);
-        }
-
         uint32_t SpawnPrimitive(
-            const std::shared_ptr<Mesh> &mesh,
             PrimitiveType primitiveType,
             const glm::vec3 &position,
             const glm::vec3 &rotation,
             const glm::vec3 &scale)
         {
-            if (!s_Context || !mesh)
+            if (!s_Context || !s_Context->scene)
             {
                 return 0;
             }
 
             RendererContext &ctx = *s_Context;
-            const uint32_t objectId = ctx.nextObjectId++;
-            auto object = std::make_shared<RenderObject>(mesh, primitiveType, objectId, position, rotation, scale);
-            ctx.renderObjects.push_back(object);
-            return objectId;
+            Entity entity;
+            switch (primitiveType)
+            {
+            case PrimitiveType::Cube:
+                entity = ctx.scene->CreateCube();
+                break;
+            case PrimitiveType::Sphere:
+                entity = ctx.scene->CreateSphere();
+                break;
+            case PrimitiveType::Quad:
+            default:
+                entity = ctx.scene->CreateQuad();
+                break;
+            }
+            auto &transform = entity.GetComponent<TransformComponent>();
+            transform.position = position;
+            transform.rotation = rotation;
+            transform.scale = scale;
+            return static_cast<uint32_t>(entity);
         }
 
         PointLightSettings BuildDefaultPointLight(const glm::vec3 &basePosition, uint32_t index)
@@ -204,18 +203,7 @@ namespace Piece
             frameInfo.materialDescriptorSets = &ctx.objectMaterialDescriptors;
             frameInfo.pipeline = pipeline;
             frameInfo.camera = ctx.camera.get();
-
-            static std::vector<RenderObject *> renderObjectViews;
-            renderObjectViews.clear();
-            renderObjectViews.reserve(ctx.renderObjects.size());
-            for (const auto &renderObject : ctx.renderObjects)
-            {
-                if (renderObject)
-                {
-                    renderObjectViews.push_back(renderObject.get());
-                }
-            }
-            frameInfo.renderObjects = &renderObjectViews;
+            frameInfo.scene = ctx.scene.get();
 
             return frameInfo;
         }
@@ -242,7 +230,7 @@ namespace Piece
             VkSampleCountFlags counts = props.limits.framebufferColorSampleCounts &
             props.limits.framebufferDepthSampleCounts;
             
-            std::cout << "Available MSAA sample counts: " << counts << std::endl;                        
+            PIECE_CORE_INFO("Available MSAA sample counts mask: {}", static_cast<uint32_t>(counts));
             if (counts & VK_SAMPLE_COUNT_8_BIT)
                 return VK_SAMPLE_COUNT_8_BIT;
 
@@ -258,7 +246,7 @@ namespace Piece
 
     void Renderer::Init(Window *window)
     {
-        assert(window && "Window must not be null");
+        PIECE_CORE_ASSERT(window != nullptr, "Window must not be null");
         s_Context = std::make_unique<RendererContext>();
         RendererContext &ctx = *s_Context;
 
@@ -272,6 +260,7 @@ namespace Piece
         ctx.surface = ctx.surfaceWrapper->surface();
         ctx.graphicsQueue = ctx.deviceWrapper->graphicsQueue();
         ctx.presentQueue = ctx.deviceWrapper->presentQueue();
+        ctx.scene = World::GetActiveScene();
 
         ctx.msaaSamples = ChooseMsaaSamples(ctx.deviceWrapper->properties);
 
@@ -324,7 +313,7 @@ namespace Piece
         pipelineLayoutInfo.pushConstantRangeCount = 1;
         pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
         VkResult result = vkCreatePipelineLayout(ctx.device, &pipelineLayoutInfo, nullptr, &ctx.geometryPipelineLayout);
-        assert(result == VK_SUCCESS);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create geometry pipeline layout");
 
         std::vector<VkDescriptorSetLayout> lightingSetLayouts{
             ctx.compositeSetLayout->getDescriptorSetLayout(),
@@ -334,7 +323,7 @@ namespace Piece
         lightingLayoutInfo.setLayoutCount = static_cast<uint32_t>(lightingSetLayouts.size());
         lightingLayoutInfo.pSetLayouts = lightingSetLayouts.data();
         result = vkCreatePipelineLayout(ctx.device, &lightingLayoutInfo, nullptr, &ctx.lightingPipelineLayout);
-        assert(result == VK_SUCCESS);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create lighting pipeline layout");
 
         const PrimitiveMeshData quadMeshData = PrimitiveMeshDataFactory::CreateQuad();
         ctx.quadMesh = std::make_shared<Mesh>(*ctx.deviceWrapper, quadMeshData.vertices, quadMeshData.indices);
@@ -342,7 +331,14 @@ namespace Piece
         const PrimitiveMeshData cubeMeshData = PrimitiveMeshDataFactory::CreateCube();
         ctx.cubeMesh = std::make_shared<Mesh>(*ctx.deviceWrapper, cubeMeshData.vertices, cubeMeshData.indices);
 
+        const PrimitiveMeshData sphereMeshData = PrimitiveMeshDataFactory::CreateSphere();
+        ctx.sphereMesh = std::make_shared<Mesh>(*ctx.deviceWrapper, sphereMeshData.vertices, sphereMeshData.indices);
+
         ctx.camera = std::make_shared<EditorCamera>(70.0f, static_cast<float>(extent.width) / static_cast<float>(extent.height), 0.1f, 100.0f);
+        if (ctx.scene)
+        {
+            ctx.scene->OnViewportResize(extent.width, extent.height);
+        }
 
         // Load shaders through the library — loaded once, reused across pipeline recreations.
         ctx.shaderLibrary = std::make_unique<ShaderLibrary>(*ctx.deviceWrapper);
@@ -357,7 +353,7 @@ namespace Piece
         CreateCommandBuffers();
         ctx.imagesInFlight.assign(ctx.swapChainWrapper->imageCount(), VK_NULL_HANDLE);
 
-        std::cout << ctx.msaaSamples << "x MSAA enabled" << std::endl;
+        PIECE_CORE_INFO("{}x MSAA enabled", static_cast<uint32_t>(ctx.msaaSamples));
     }
 
     void Renderer::Shutdown()
@@ -371,9 +367,9 @@ namespace Piece
 
         vkDeviceWaitIdle(ctx.device);
 
-        ctx.renderObjects.clear();
         ctx.quadMesh.reset();
         ctx.cubeMesh.reset();
+        ctx.sphereMesh.reset();
         ctx.camera.reset();
         ctx.objectMaterialDescriptors.clear();
         ctx.objectBoundMaterialSignature.clear();
@@ -429,7 +425,7 @@ namespace Piece
 
     void Renderer::DrawFrame()
     {
-        assert(s_Context && "Renderer context is not initialized");
+        PIECE_CORE_ASSERT(s_Context != nullptr, "Renderer context is not initialized");
         RendererContext &ctx = *s_Context;
 
         uint32_t imageIndex;
@@ -441,7 +437,7 @@ namespace Piece
             RecreateSwapChain();
             return;
         }
-        assert(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR, "Failed to acquire swapchain image");
 
         frameResources.imageIndex = imageIndex;
 
@@ -451,13 +447,14 @@ namespace Piece
         // vkDeviceWaitIdle is only called when at least one object needs an update.
         {
             bool anyPending = false;
-            for (const auto &ro : ctx.renderObjects)
+            auto view = ctx.scene->GetAllEntitiesViewWith<MeshRendererComponent>();
+            for (auto entityHandle : view)
             {
-                if (!ro)
-                    continue;
-                uint32_t id = ro->objectId();
+                const auto &meshRenderer = view.get<MeshRendererComponent>(entityHandle);
+                uint32_t id = static_cast<uint32_t>(entityHandle);
                 bool noDescriptor = ctx.objectMaterialDescriptors.find(id) == ctx.objectMaterialDescriptors.end();
-                bool pathChanged = ctx.objectBoundMaterialSignature[id] != MakeMaterialSignature(ro->materialTextures());
+                MaterialTextures resolvedMaterial = World::ResolveMaterialTextures(meshRenderer.materialId, meshRenderer.materialTextures);
+                bool pathChanged = ctx.objectBoundMaterialSignature[id] != MakeMaterialSignature(resolvedMaterial);
                 if (noDescriptor || pathChanged)
                 {
                     anyPending = true;
@@ -467,10 +464,10 @@ namespace Piece
             if (anyPending)
             {
                 vkDeviceWaitIdle(ctx.device);
-                for (const auto &ro : ctx.renderObjects)
+                for (auto entityHandle : view)
                 {
-                    if (ro)
-                        EnsureObjectMaterialDescriptor(ctx, *ro);
+                    const auto &meshRenderer = view.get<MeshRendererComponent>(entityHandle);
+                    EnsureObjectMaterialDescriptor(ctx, static_cast<uint32_t>(entityHandle), meshRenderer.materialId, meshRenderer.materialTextures);
                 }
             }
         }
@@ -491,7 +488,7 @@ namespace Piece
         {
             RecreateSwapChain();
         }
-        assert(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR, "Failed to submit swapchain command buffers");
 
         ctx.currentFrame = (ctx.currentFrame + 1) % ctx.frameResources.size();
     }
@@ -537,6 +534,10 @@ namespace Piece
         {
             s_Context->camera->setViewportSize(static_cast<float>(width), static_cast<float>(height));
         }
+        if (s_Context->scene)
+        {
+            s_Context->scene->OnViewportResize(width, height);
+        }
 
         RecreateSwapChain();
     }
@@ -561,19 +562,19 @@ namespace Piece
 
     Device &Renderer::GetDevice()
     {
-        assert(s_Context && s_Context->deviceWrapper && "Renderer device is not initialized");
+        PIECE_CORE_ASSERT(s_Context && s_Context->deviceWrapper, "Renderer device is not initialized");
         return *s_Context->deviceWrapper;
     }
 
     RenderPass &Renderer::GetRenderPass()
     {
-        assert(s_Context && s_Context->swapChainWrapper && "Renderer swapchain is not initialized");
+        PIECE_CORE_ASSERT(s_Context && s_Context->swapChainWrapper, "Renderer swapchain is not initialized");
         return s_Context->swapChainWrapper->getRenderPassObject();
     }
 
     VulkanContext &Renderer::GetVulkanContext()
     {
-        assert(s_Context && s_Context->vulkanContext && "Renderer Vulkan context is not initialized");
+        PIECE_CORE_ASSERT(s_Context && s_Context->vulkanContext, "Renderer Vulkan context is not initialized");
         return *s_Context->vulkanContext;
     }
 
@@ -582,25 +583,9 @@ namespace Piece
         s_SwapChainRecreatedCallback = callback;
     }
 
-    LightingSettings Renderer::GetLightingSettings()
-    {
-        return LightingRenderSystem::GetSettings();
-    }
-
-    void Renderer::SetLightingSettings(const LightingSettings &settings)
-    {
-        LightingRenderSystem::SetSettings(settings);
-    }
-
     bool Renderer::CreatePointLightInView()
     {
-        if (!s_Context)
-        {
-            return false;
-        }
-
-        LightingSettings lighting = LightingRenderSystem::GetSettings();
-        if (lighting.pointLightCount >= lighting.pointLights.size())
+        if (!s_Context || !s_Context->scene)
         {
             return false;
         }
@@ -608,41 +593,35 @@ namespace Piece
         const glm::vec3 spawnCenter = s_Context->camera
                                           ? s_Context->camera->focalPoint()
                                           : glm::vec3(0.0f);
-
-        const uint32_t nextIndex = lighting.pointLightCount;
-        lighting.pointLights[nextIndex] = BuildDefaultPointLight(spawnCenter, nextIndex);
-        lighting.pointLightCount = nextIndex + 1;
-        LightingRenderSystem::SetSettings(lighting);
+        Entity pointLight = s_Context->scene->CreatePointLight();
+        PointLightSettings defaults = BuildDefaultPointLight(spawnCenter, 0);
+        auto &transform = pointLight.GetComponent<TransformComponent>();
+        auto &light = pointLight.GetComponent<PointLightComponent>();
+        transform.position = defaults.position;
+        light.radius = defaults.radius;
+        light.color = defaults.color;
+        light.intensity = defaults.intensity;
         return true;
-    }
-
-    void Renderer::ResetDirectionalLight()
-    {
-        LightingSettings lighting = LightingRenderSystem::GetSettings();
-        lighting.directionalDirection = kDefaultDirectionalDirection;
-        lighting.directionalColor = kDefaultDirectionalColor;
-        lighting.directionalIntensity = kDefaultDirectionalIntensity;
-        LightingRenderSystem::SetSettings(lighting);
     }
 
     void Renderer::CreateQuadInView()
     {
-        if (!s_Context)
+        if (!s_Context || !s_Context->camera)
         {
             return;
         }
 
-        SpawnPrimitiveAtCameraTarget(s_Context->quadMesh, PrimitiveType::Quad);
+        SpawnPrimitive(PrimitiveType::Quad, s_Context->camera->focalPoint(), glm::vec3(0.0f), glm::vec3(1.0f));
     }
 
     void Renderer::CreateCubeInView()
     {
-        if (!s_Context)
+        if (!s_Context || !s_Context->camera)
         {
             return;
         }
 
-        SpawnPrimitiveAtCameraTarget(s_Context->cubeMesh, PrimitiveType::Cube);
+        SpawnPrimitive(PrimitiveType::Cube, s_Context->camera->focalPoint(), glm::vec3(0.0f), glm::vec3(1.0f));
     }
 
     uint32_t Renderer::CreateQuad(const glm::vec3 &position, const glm::vec3 &rotation, const glm::vec3 &scale)
@@ -652,7 +631,7 @@ namespace Piece
             return 0;
         }
 
-        return SpawnPrimitive(s_Context->quadMesh, PrimitiveType::Quad, position, rotation, scale);
+        return SpawnPrimitive(PrimitiveType::Quad, position, rotation, scale);
     }
 
     uint32_t Renderer::CreateCube(const glm::vec3 &position, const glm::vec3 &rotation, const glm::vec3 &scale)
@@ -662,76 +641,27 @@ namespace Piece
             return 0;
         }
 
-        return SpawnPrimitive(s_Context->cubeMesh, PrimitiveType::Cube, position, rotation, scale);
+        return SpawnPrimitive(PrimitiveType::Cube, position, rotation, scale);
     }
 
-    std::vector<QuadMaterialView> Renderer::GetQuadMaterials()
-    {
-        std::vector<QuadMaterialView> quads;
-        if (!s_Context)
-        {
-            return quads;
-        }
-
-        for (const auto &renderObject : s_Context->renderObjects)
-        {
-            if (!renderObject || renderObject->primitiveType() != PrimitiveType::Quad)
-            {
-                continue;
-            }
-
-            const auto &material = renderObject->materialTextures();
-            QuadMaterialView quad{};
-            quad.id = renderObject->objectId();
-            quad.albedoPath = material.albedoPath;
-            quad.normalPath = material.normalPath;
-            quad.heightPath = material.heightPath;
-            quad.roughnessPath = material.roughnessPath;
-            quad.ambientOcclusionPath = material.ambientOcclusionPath;
-            quads.push_back(std::move(quad));
-        }
-
-        return quads;
-    }
-
-    bool Renderer::SetQuadTexturePath(uint32_t quadId, TextureSlot slot, const std::string &path)
+    uint32_t Renderer::CreateSphere(const glm::vec3 &position, const glm::vec3 &rotation, const glm::vec3 &scale)
     {
         if (!s_Context)
         {
-            return false;
+            return 0;
         }
 
-        for (const auto &renderObject : s_Context->renderObjects)
+        return SpawnPrimitive(PrimitiveType::Sphere, position, rotation, scale);
+    }
+
+    void Renderer::CreateSphereInView()
+    {
+        if (!s_Context || !s_Context->camera)
         {
-            if (!renderObject || renderObject->primitiveType() != PrimitiveType::Quad || renderObject->objectId() != quadId)
-            {
-                continue;
-            }
-
-            auto &material = renderObject->materialTextures();
-            switch (slot)
-            {
-            case TextureSlot::Albedo:
-                material.albedoPath = path;
-                return true;
-            case TextureSlot::Normal:
-                material.normalPath = path;
-                return true;
-            case TextureSlot::Height:
-                material.heightPath = path;
-                return true;
-            case TextureSlot::Roughness:
-                material.roughnessPath = path;
-                return true;
-            case TextureSlot::AmbientOcclusion:
-                material.ambientOcclusionPath = path;
-                return true;
-            default:
-                return false;
-            }
+            return;
         }
 
-        return false;
+        SpawnPrimitive(PrimitiveType::Sphere, s_Context->camera->focalPoint(), glm::vec3(0.0f), glm::vec3(1.0f));
     }
 
     /* Command pool is created by Device; Renderer uses Device::getCommandPool() */
@@ -755,7 +685,7 @@ namespace Piece
         allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
 
         VkResult result = vkAllocateCommandBuffers(ctx.device, &allocInfo, commandBuffers.data());
-        assert(result == VK_SUCCESS);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to allocate command buffers");
 
         VkSemaphoreCreateInfo semaphoreInfo{};
         semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -772,17 +702,17 @@ namespace Piece
             if (ctx.frameResources[i].imageAvailableSemaphore == VK_NULL_HANDLE)
             {
                 result = vkCreateSemaphore(ctx.device, &semaphoreInfo, nullptr, &ctx.frameResources[i].imageAvailableSemaphore);
-                assert(result == VK_SUCCESS);
+                PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create image-available semaphore");
             }
             if (ctx.frameResources[i].renderFinishedSemaphore == VK_NULL_HANDLE)
             {
                 result = vkCreateSemaphore(ctx.device, &semaphoreInfo, nullptr, &ctx.frameResources[i].renderFinishedSemaphore);
-                assert(result == VK_SUCCESS);
+                PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create render-finished semaphore");
             }
             if (ctx.frameResources[i].inFlightFence == VK_NULL_HANDLE)
             {
                 result = vkCreateFence(ctx.device, &fenceInfo, nullptr, &ctx.frameResources[i].inFlightFence);
-                assert(result == VK_SUCCESS);
+                PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create in-flight fence");
             }
 
             FrameInfo frameInfo = BuildFrameInfo(
@@ -858,6 +788,10 @@ namespace Piece
             VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
         ctx.imagesInFlight.assign(ctx.swapChainWrapper->imageCount(), VK_NULL_HANDLE);
         ctx.objectBoundMaterialSignature.clear();
+        if (ctx.scene)
+        {
+            ctx.scene->OnViewportResize(extent.width, extent.height);
+        }
 
         ctx.msaaSamples = ChooseMsaaSamples(ctx.deviceWrapper->properties);
 
@@ -880,7 +814,7 @@ namespace Piece
         geometryLayoutInfo.pushConstantRangeCount = 1;
         geometryLayoutInfo.pPushConstantRanges = &pushConstantRange;
         VkResult result = vkCreatePipelineLayout(ctx.device, &geometryLayoutInfo, nullptr, &ctx.geometryPipelineLayout);
-        assert(result == VK_SUCCESS);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to recreate geometry pipeline layout");
 
         std::vector<VkDescriptorSetLayout> lightingSetLayouts{
             ctx.compositeSetLayout->getDescriptorSetLayout(),
@@ -890,7 +824,7 @@ namespace Piece
         lightingLayoutInfo.setLayoutCount = static_cast<uint32_t>(lightingSetLayouts.size());
         lightingLayoutInfo.pSetLayouts = lightingSetLayouts.data();
         result = vkCreatePipelineLayout(ctx.device, &lightingLayoutInfo, nullptr, &ctx.lightingPipelineLayout);
-        assert(result == VK_SUCCESS);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to recreate lighting pipeline layout");
 
         RendererInternals::CreateGraphicsPipeline(ctx);
         CreateCommandBuffers();
