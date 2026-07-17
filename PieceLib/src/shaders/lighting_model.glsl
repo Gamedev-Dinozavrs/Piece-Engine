@@ -13,7 +13,18 @@ layout(set = 1, binding = 0) uniform LightingUbo {
 } u_Lighting;
 
 float ComputeSpecular(vec3 normal, vec3 lightDir, vec3 viewDir, float roughness) {
-    vec3 halfVector = normalize(lightDir + viewDir);
+    float ndotl = max(dot(normal, lightDir), 0.0);
+    if (ndotl <= 0.0) {
+        return 0.0;
+    }
+
+    vec3 halfVector = lightDir + viewDir;
+    float halfVectorLength = length(halfVector);
+    if (halfVectorLength <= 0.0) {
+        return 0.0;
+    }
+
+    halfVector /= halfVectorLength;
     float shininess = mix(u_Lighting.specularParams.z, u_Lighting.specularParams.y, clamp(roughness, 0.0, 1.0));
     return pow(max(dot(normal, halfVector), 0.0), shininess) * u_Lighting.specularParams.x;
 }
