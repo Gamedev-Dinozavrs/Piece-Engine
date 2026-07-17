@@ -1,4 +1,5 @@
 #include "EditorLayer.h"
+#include "EditorPlacement.h"
 
 #include "imgui.h"
 #include <renderer/Renderer.h>
@@ -89,11 +90,11 @@ void EditorLayer::OnImGuiRender() {
     ImGui::Begin("Scene");
     ImGui::Text("Editor skeleton");
     if (ImGui::Button("Create Quad")) {
-        Renderer::CreateQuadInView();
+        EditorPlacement::SpawnQuadInView();
     }
     ImGui::SameLine();
     if (ImGui::Button("Create Cube")) {
-        Renderer::CreateCubeInView();
+        EditorPlacement::SpawnCubeInView();
     }
 
     ImGui::Separator();
@@ -102,7 +103,7 @@ void EditorLayer::OnImGuiRender() {
         bool changed = false;
 
         if (ImGui::Button("Create Point Light")) {
-            Renderer::CreatePointLightInView();
+            EditorPlacement::SpawnPointLightInView();
             lighting = Renderer::GetLightingSettings();
         }
         ImGui::SameLine();

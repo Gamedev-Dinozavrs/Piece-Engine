@@ -65,6 +65,8 @@ namespace Piece {
         static RenderPass& GetRenderPass();
         static VulkanContext& GetVulkanContext();
         static void SetSwapChainRecreatedCallback(const std::function<void()>& callback);
+        static uint32_t CreateQuad(const glm::vec3& position, const glm::vec3& rotation = glm::vec3(0.0f), const glm::vec3& scale = glm::vec3(1.0f));
+        static uint32_t CreateCube(const glm::vec3& position, const glm::vec3& rotation = glm::vec3(0.0f), const glm::vec3& scale = glm::vec3(1.0f));
         static void CreateQuadInView();
         static void CreateCubeInView();
         static std::vector<QuadMaterialView> GetQuadMaterials();

@@ -12,7 +12,7 @@ file(GLOB CORE CONFIGURE_DEPENDS "src/core/*.cpp" "src/core/*.h")
 file(GLOB WINDOW CONFIGURE_DEPENDS "src/window/*.cpp" "src/window/*.h")
 file(GLOB EVENT CONFIGURE_DEPENDS "src/event/*.cpp" "src/event/*.h")
 file(GLOB LAYER CONFIGURE_DEPENDS "src/layer/*.cpp" "src/layer/*.h")
-file(GLOB RENDERER CONFIGURE_DEPENDS "src/renderer/*.cpp" "src/renderer/*.h")
+file(GLOB_RECURSE RENDERER CONFIGURE_DEPENDS "src/renderer/*.cpp" "src/renderer/*.h")
 file(GLOB SCENE CONFIGURE_DEPENDS "src/scene/*.cpp" "src/scene/*.h")
 file(GLOB_RECURSE UTILS CONFIGURE_DEPENDS "src/utils/*.cpp" "src/utils/*.h")
 
