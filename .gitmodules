@@ -10,3 +10,6 @@
 [submodule "Dependencies/spdlog"]
 	path = Dependencies/spdlog
 	url = https://github.com/Gamedev-Dinozavrs/spdlog
+[submodule "Dependencies/fastgltf"]
+	path = Dependencies/fastgltf
+	url = https://github.com/Gamedev-Dinozavrs/fastgltf
