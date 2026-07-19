@@ -3,7 +3,7 @@
 #include <renderer/Device.h>
 #include <vulkan/vulkan.h>
 #include <vma/vk_mem_alloc.h>
-#include <memory>
+#include <core/Core.h>
 
 namespace Piece {
 
@@ -27,7 +27,7 @@ public:
     VkDeviceSize size() const { return size_; }
 
     // Create a device-local buffer and upload data via a staging buffer.
-    static std::unique_ptr<Buffer> createDeviceLocal(Device& device, const void* data, VkDeviceSize size, VkBufferUsageFlags usage);
+    static Scope<Buffer> createDeviceLocal(Device& device, const void* data, VkDeviceSize size, VkBufferUsageFlags usage);
 
 private:
     Device& device_;

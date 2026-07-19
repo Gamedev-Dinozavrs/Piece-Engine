@@ -19,8 +19,8 @@ DescriptorSetLayout::Builder& DescriptorSetLayout::Builder::addBinding(uint32_t 
     return *this;
 }
 
-std::unique_ptr<DescriptorSetLayout> DescriptorSetLayout::Builder::build() const {
-    return std::make_unique<DescriptorSetLayout>(device, bindings);
+Scope<DescriptorSetLayout> DescriptorSetLayout::Builder::build() const {
+    return CreateScope<DescriptorSetLayout>(device, bindings);
 }
 
 DescriptorSetLayout::DescriptorSetLayout(Device& device, std::unordered_map<uint32_t, VkDescriptorSetLayoutBinding> bindings)
@@ -61,8 +61,8 @@ DescriptorPool::Builder& DescriptorPool::Builder::setMaxSets(uint32_t count) {
     return *this;
 }
 
-std::unique_ptr<DescriptorPool> DescriptorPool::Builder::build() const {
-    return std::make_unique<DescriptorPool>(device, maxSets, poolFlags, poolSizes);
+Scope<DescriptorPool> DescriptorPool::Builder::build() const {
+    return CreateScope<DescriptorPool>(device, maxSets, poolFlags, poolSizes);
 }
 
 DescriptorPool::DescriptorPool(Device& device, uint32_t maxSets, VkDescriptorPoolCreateFlags poolFlags, const std::vector<VkDescriptorPoolSize>& poolSizes)

@@ -5,60 +5,151 @@ struct PointLight {
 
 layout(set = 1, binding = 0) uniform LightingUbo {
     vec4 cameraPosition;
+    mat4 invViewProj;
     vec4 dirLightDirection;
     vec4 dirLightColorIntensity;
     PointLight pointLights[4];
     ivec4 pointLightCount;
     vec4 specularParams;
+    vec4 iblParams; // x = intensity, y = diffuseStrength, z = specularStrength, w = maxSpecularLod
 } u_Lighting;
 
-float ComputeSpecular(vec3 normal, vec3 lightDir, vec3 viewDir, float roughness) {
-    float ndotl = max(dot(normal, lightDir), 0.0);
-    if (ndotl <= 0.0) {
-        return 0.0;
-    }
+// ----------------------------------------------------------------------------
+// Cook-Torrance BRDF helpers
+// ----------------------------------------------------------------------------
 
-    vec3 halfVector = lightDir + viewDir;
-    float halfVectorLength = length(halfVector);
-    if (halfVectorLength <= 0.0) {
-        return 0.0;
-    }
+const float PI = 3.14159265359;
 
-    halfVector /= halfVectorLength;
-    float shininess = mix(u_Lighting.specularParams.z, u_Lighting.specularParams.y, clamp(roughness, 0.0, 1.0));
-    return pow(max(dot(normal, halfVector), 0.0), shininess) * u_Lighting.specularParams.x;
+// GGX / Trowbridge-Reitz normal distribution.
+// roughness is perceptually remapped: a = roughness^2.
+float D_GGX(float NdotH, float roughness) {
+    float a  = roughness * roughness;
+    float a2 = a * a;
+    float d  = NdotH * NdotH * (a2 - 1.0) + 1.0;
+    return a2 / (PI * d * d);
 }
 
+// Schlick-GGX single-term geometry factor.
+float G_SchlickGGX(float NdotX, float roughness) {
+    float r = roughness + 1.0;
+    float k = (r * r) / 8.0;
+    return NdotX / (NdotX * (1.0 - k) + k);
+}
+
+// Smith geometry term (view + light).
+float G_Smith(float NdotV, float NdotL, float roughness) {
+    return G_SchlickGGX(max(NdotV, 0.0001), roughness)
+         * G_SchlickGGX(max(NdotL, 0.0001), roughness);
+}
+
+// Fresnel-Schlick approximation.
+vec3 F_Schlick(float cosTheta, vec3 F0) {
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+// ----------------------------------------------------------------------------
+// Per-light Cook-Torrance evaluation
+// ----------------------------------------------------------------------------
+vec3 CookTorrance(
+    vec3  albedo,
+    float metallic,
+    float roughness,
+    vec3  normal,
+    vec3  viewDir,
+    vec3  lightDir,
+    vec3  lightColor)
+{
+    float NdotL = max(dot(normal, lightDir), 0.0);
+    if (NdotL <= 0.0) return vec3(0.0);
+
+    vec3  H     = normalize(viewDir + lightDir);
+    float NdotV = max(dot(normal, viewDir), 0.0001);
+    float NdotH = max(dot(normal, H),       0.0);
+    float HdotV = max(dot(H,      viewDir), 0.0);
+
+    // Reflectance at normal incidence: 0.04 for dielectrics, albedo for metals.
+    vec3 F0 = mix(vec3(0.04), albedo, metallic);
+
+    float D   = D_GGX(NdotH, roughness);
+    float G   = G_Smith(NdotV, NdotL, roughness);
+    vec3  F   = F_Schlick(HdotV, F0);
+
+    vec3 specular = (D * G * F) / (4.0 * NdotV * NdotL);
+
+    // Energy conservation: metals have no diffuse term.
+    vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
+
+    return (kD * albedo / PI + specular) * lightColor * NdotL;
+}
+
+// ----------------------------------------------------------------------------
+// Scene lighting accumulation
+// ----------------------------------------------------------------------------
 vec3 ComputeLighting(vec3 baseColor, vec3 normal, vec3 worldPos, vec3 viewDir, float roughness, float ao) {
-    vec3 ambient = 0.08 * baseColor * ao;
+    // Clamp roughness to avoid numerical issues in the GGX denominator.
+    roughness = clamp(roughness, 0.05, 1.0);
+
+    // metallic = 0 (dielectric) until the G-buffer gains a metallic channel.
+    float metallic = 0.0;
+
     vec3 lighting = vec3(0.0);
 
-    vec3 dirLightDir = normalize(-u_Lighting.dirLightDirection.xyz);
-    float dirDiffuse = max(dot(normal, dirLightDir), 0.0);
-    float dirSpecular = ComputeSpecular(normal, dirLightDir, viewDir, roughness);
-    vec3 dirLightColor = u_Lighting.dirLightColorIntensity.rgb * u_Lighting.dirLightColorIntensity.a;
-    lighting += baseColor * dirLightColor * dirDiffuse;
-    lighting += dirLightColor * dirSpecular;
+    // Directional light
+    vec3 dirLightDir   = normalize(-u_Lighting.dirLightDirection.xyz);
+    vec3 dirLightColor = u_Lighting.dirLightColorIntensity.rgb
+                       * u_Lighting.dirLightColorIntensity.a;
+    lighting += CookTorrance(baseColor, metallic, roughness, normal, viewDir, dirLightDir, dirLightColor);
 
+    // Point lights
     for (int i = 0; i < u_Lighting.pointLightCount.x; ++i) {
-        vec3 lightToFrag = worldPos - u_Lighting.pointLights[i].positionRadius.xyz;
-        float distance = length(lightToFrag);
-        float radius = max(u_Lighting.pointLights[i].positionRadius.w, 0.001);
+        vec3  lightToFrag = worldPos - u_Lighting.pointLights[i].positionRadius.xyz;
+        float distance    = length(lightToFrag);
+        float radius      = max(u_Lighting.pointLights[i].positionRadius.w, 0.001);
         float attenuation = clamp(1.0 - distance / radius, 0.0, 1.0);
         attenuation *= attenuation;
 
-        if (attenuation <= 0.0) {
-            continue;
-        }
+        if (attenuation <= 0.0) continue;
 
-        vec3 pointLightDir = normalize(-lightToFrag);
-        float pointDiffuse = max(dot(normal, pointLightDir), 0.0);
-        float pointSpecular = ComputeSpecular(normal, pointLightDir, viewDir, roughness);
-        vec3 pointColor = u_Lighting.pointLights[i].colorIntensity.rgb * u_Lighting.pointLights[i].colorIntensity.a * attenuation;
-
-        lighting += baseColor * pointColor * pointDiffuse;
-        lighting += pointColor * pointSpecular;
+        vec3 pointLightDir   = normalize(-lightToFrag);
+        vec3 pointLightColor = u_Lighting.pointLights[i].colorIntensity.rgb
+                             * u_Lighting.pointLights[i].colorIntensity.a
+                             * attenuation;
+        lighting += CookTorrance(baseColor, metallic, roughness, normal, viewDir, pointLightDir, pointLightColor);
     }
 
+    // Ambient — flat placeholder until IBL is added.
+    vec3 ambient = 0.03 * baseColor * ao;
+
+    return ambient + lighting;
+}
+
+vec3 ComputeLighting(vec3 baseColor, vec3 normal, vec3 worldPos, vec3 viewDir, float roughness, float metallic, float ao) {
+    roughness = clamp(roughness, 0.05, 1.0);
+    metallic = clamp(metallic, 0.0, 1.0);
+
+    vec3 lighting = vec3(0.0);
+
+    vec3 dirLightDir   = normalize(-u_Lighting.dirLightDirection.xyz);
+    vec3 dirLightColor = u_Lighting.dirLightColorIntensity.rgb
+                       * u_Lighting.dirLightColorIntensity.a;
+    lighting += CookTorrance(baseColor, metallic, roughness, normal, viewDir, dirLightDir, dirLightColor);
+
+    for (int i = 0; i < u_Lighting.pointLightCount.x; ++i) {
+        vec3  lightToFrag = worldPos - u_Lighting.pointLights[i].positionRadius.xyz;
+        float distance    = length(lightToFrag);
+        float radius      = max(u_Lighting.pointLights[i].positionRadius.w, 0.001);
+        float attenuation = clamp(1.0 - distance / radius, 0.0, 1.0);
+        attenuation *= attenuation;
+
+        if (attenuation <= 0.0) continue;
+
+        vec3 pointLightDir   = normalize(-lightToFrag);
+        vec3 pointLightColor = u_Lighting.pointLights[i].colorIntensity.rgb
+                             * u_Lighting.pointLights[i].colorIntensity.a
+                             * attenuation;
+        lighting += CookTorrance(baseColor, metallic, roughness, normal, viewDir, pointLightDir, pointLightColor);
+    }
+
+    vec3 ambient = 0.03 * baseColor * ao;
     return ambient + lighting;
 }

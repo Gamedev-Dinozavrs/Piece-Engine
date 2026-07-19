@@ -3,7 +3,7 @@
 #include <renderer/Device.h>
 #include <vulkan/vulkan.h>
 
-#include <memory>
+#include <core/Core.h>
 #include <unordered_map>
 #include <vector>
 
@@ -16,7 +16,7 @@ public:
         Builder(Device& device) : device{ device } {}
 
         Builder& addBinding(uint32_t binding, VkDescriptorType descriptorType, VkShaderStageFlags stageFlags, uint32_t count = 1);
-        std::unique_ptr<DescriptorSetLayout> build() const;
+        Scope<DescriptorSetLayout> build() const;
 
     private:
         Device& device;
@@ -47,7 +47,7 @@ public:
         Builder& addPoolSize(VkDescriptorType descriptorType, uint32_t count);
         Builder& setPoolFlags(VkDescriptorPoolCreateFlags flags);
         Builder& setMaxSets(uint32_t count);
-        std::unique_ptr<DescriptorPool> build() const;
+        Scope<DescriptorPool> build() const;
 
     private:
         Device& device;

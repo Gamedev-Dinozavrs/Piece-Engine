@@ -5,7 +5,7 @@
 #include <renderer/RenderPass.h>
 #include <vulkan/vulkan.h>
 #include <vma/vk_mem_alloc.h>
-#include <memory>
+#include <core/Core.h>
 #include <vector>
 
 namespace Piece {
@@ -17,7 +17,7 @@ public:
     static constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 
     SwapChain(Device& deviceRef, VkExtent2D windowExtent);
-    SwapChain(Device& deviceRef, VkExtent2D windowExtent, std::shared_ptr<SwapChain> previous);
+    SwapChain(Device& deviceRef, VkExtent2D windowExtent, Ref<SwapChain> previous);
     ~SwapChain();
 
     SwapChain(const SwapChain&) = delete;
@@ -27,6 +27,7 @@ public:
     VkRenderPass getRenderPass() { return m_renderPass->get(); }
     RenderPass& getRenderPassObject() { return *m_renderPass; }
     VkImageView getImageView(int index) { return swapChainImageViews[index]; }
+    VkImage getImage(int index) { return swapChainImages[index]; }
     size_t imageCount() { return swapChainImages.size(); }
     VkFormat getSwapChainImageFormat() { return swapChainImageFormat; }
     VkExtent2D getSwapChainExtent() { return swapChainExtent; }
@@ -39,7 +40,7 @@ public:
     VkFormat findDepthFormat();
 
     VkResult acquireNextImage(uint32_t* imageIndex, const FrameResources& frameResources);
-    VkResult submitCommandBuffers(const VkCommandBuffer* buffers, uint32_t* imageIndex, const FrameResources& frameResources, std::vector<VkFence>& imagesInFlight);
+    VkResult submitCommandBuffers(const VkCommandBuffer* buffers, uint32_t* imageIndex, const FrameResources& frameResources, VkSemaphore renderFinishedSemaphore, std::vector<VkFence>& imagesInFlight);
 
     bool compareSwapFormats(const SwapChain& swapChain) const {
         return swapChain.swapChainDepthFormat == swapChainDepthFormat &&
@@ -63,7 +64,7 @@ private:
     VkExtent2D swapChainExtent{};
 
     std::vector<VkFramebuffer> swapChainFramebuffers;
-    std::unique_ptr<RenderPass> m_renderPass;
+    Scope<RenderPass> m_renderPass;
 
     std::vector<VkImage> depthImages;
     std::vector<VmaAllocation> depthImageAllocations;
@@ -75,7 +76,7 @@ private:
     VkExtent2D windowExtent{};
 
     VkSwapchainKHR swapChain{VK_NULL_HANDLE};
-    std::shared_ptr<SwapChain> oldSwapChain{nullptr};
+    Ref<SwapChain> oldSwapChain{nullptr};
 };
 
 } // namespace Piece

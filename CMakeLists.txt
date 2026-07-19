@@ -15,7 +15,13 @@ elseif (APPLE)
     add_definitions(-DPLATFORM_MAC)
 endif()
 
+set(FASTGLTF_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
+set(FASTGLTF_ENABLE_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(FASTGLTF_ENABLE_DOCS OFF CACHE BOOL "" FORCE)
+set(FASTGLTF_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+
 add_subdirectory(PieceLib)
 add_subdirectory(Dependencies/GLFW)
 add_subdirectory(Dependencies/GLM)
+add_subdirectory(Dependencies/fastgltf)
 add_subdirectory(PieceEditor)

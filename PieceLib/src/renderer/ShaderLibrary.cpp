@@ -9,15 +9,15 @@ namespace Piece {
 ShaderLibrary::ShaderLibrary(Device& device)
     : m_Device(device) {}
 
-std::shared_ptr<Shader> ShaderLibrary::Load(const std::string& name,
-                                              const std::string& filepath,
-                                              Shader::Stage stage) {
-    auto shader = std::make_shared<Shader>(m_Device, filepath, stage);
+Ref<Shader> ShaderLibrary::Load(const std::string& name,
+                                  const std::string& filepath,
+                                  Shader::Stage stage) {
+    auto shader = CreateRef<Shader>(m_Device, filepath, stage);
     m_Shaders[name] = shader;
     return shader;
 }
 
-std::shared_ptr<Shader> ShaderLibrary::Get(const std::string& name) const {
+Ref<Shader> ShaderLibrary::Get(const std::string& name) const {
     auto it = m_Shaders.find(name);
     if (it == m_Shaders.end()) {
         throw std::runtime_error("ShaderLibrary: shader not found: " + name);

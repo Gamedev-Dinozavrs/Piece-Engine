@@ -19,6 +19,12 @@ void RecordComposite(
     VkPipelineLayout pipelineLayout,
     VkDescriptorSet compositeDescriptorSet,
     VkDescriptorSet globalDescriptorSet);
+void RecordFXAA(
+    VkCommandBuffer commandBuffer,
+    VkExtent2D extent,
+    Pipeline& pipeline,
+    VkPipelineLayout pipelineLayout,
+    VkDescriptorSet fxaaDescriptorSet);
 
 LightingSettings GetSettings();
 void SetSettings(const LightingSettings& settings);

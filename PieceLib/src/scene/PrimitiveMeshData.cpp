@@ -12,10 +12,10 @@ namespace PrimitiveMeshDataFactory {
 PrimitiveMeshData CreateQuad() {
     PrimitiveMeshData data{};
     data.vertices = {
-        {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.2f, 0.2f}, {0, 0}},
-        {{0.5f, -0.5f, 0.0f}, {0.2f, 1.0f, 0.2f}, {1, 0}},
-        {{0.5f, 0.5f, 0.0f}, {0.2f, 0.2f, 1.0f}, {1, 1}},
-        {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 0.2f}, {0, 1}},
+        {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.2f, 0.2f}, {0, 0}, {0.0f, 0.0f, 1.0f}},
+        {{0.5f, -0.5f, 0.0f}, {0.2f, 1.0f, 0.2f}, {1, 0}, {0.0f, 0.0f, 1.0f}},
+        {{0.5f, 0.5f, 0.0f}, {0.2f, 0.2f, 1.0f}, {1, 1}, {0.0f, 0.0f, 1.0f}},
+        {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 0.2f}, {0, 1}, {0.0f, 0.0f, 1.0f}},
     };
 
     data.indices = {0, 1, 2, 2, 3, 0};
@@ -26,16 +26,16 @@ PrimitiveMeshData CreateCube() {
     PrimitiveMeshData data{};
     data.vertices = {
         // Front face (+Z)
-        {{-0.5f, -0.5f, 0.5f}, {1, 0, 0}, {0, 0}},
-        {{0.5f, -0.5f, 0.5f}, {0, 1, 0}, {1, 0}},
-        {{0.5f, 0.5f, 0.5f}, {0, 0, 1}, {1, 1}},
-        {{-0.5f, 0.5f, 0.5f}, {1, 1, 0}, {0, 1}},
+        {{-0.5f, -0.5f, 0.5f}, {1, 0, 0}, {0, 0}, glm::normalize(glm::vec3{-0.5f, -0.5f, 0.5f})},
+        {{0.5f, -0.5f, 0.5f}, {0, 1, 0}, {1, 0}, glm::normalize(glm::vec3{0.5f, -0.5f, 0.5f})},
+        {{0.5f, 0.5f, 0.5f}, {0, 0, 1}, {1, 1}, glm::normalize(glm::vec3{0.5f, 0.5f, 0.5f})},
+        {{-0.5f, 0.5f, 0.5f}, {1, 1, 0}, {0, 1}, glm::normalize(glm::vec3{-0.5f, 0.5f, 0.5f})},
 
         // Back face (-Z)
-        {{-0.5f, -0.5f, -0.5f}, {1, 0, 1}, {0, 0}},
-        {{0.5f, -0.5f, -0.5f}, {0, 1, 1}, {1, 0}},
-        {{0.5f, 0.5f, -0.5f}, {0.5, 0.5, 0.5}, {1, 1}},
-        {{-0.5f, 0.5f, -0.5f}, {0.8, 0.2, 0.2}, {0, 1}},
+        {{-0.5f, -0.5f, -0.5f}, {1, 0, 1}, {0, 0}, glm::normalize(glm::vec3{-0.5f, -0.5f, -0.5f})},
+        {{0.5f, -0.5f, -0.5f}, {0, 1, 1}, {1, 0}, glm::normalize(glm::vec3{0.5f, -0.5f, -0.5f})},
+        {{0.5f, 0.5f, -0.5f}, {0.5, 0.5, 0.5}, {1, 1}, glm::normalize(glm::vec3{0.5f, 0.5f, -0.5f})},
+        {{-0.5f, 0.5f, -0.5f}, {0.8, 0.2, 0.2}, {0, 1}, glm::normalize(glm::vec3{-0.5f, 0.5f, -0.5f})},
     };
 
     data.indices = {
@@ -72,7 +72,8 @@ PrimitiveMeshData CreateSphere() {
             data.vertices.push_back({
                 {x, y, z},
                 {u, v, 1.0f - u},
-                {u, v}
+                {u, v},
+                glm::normalize(glm::vec3{x, y, z})
             });
         }
     }

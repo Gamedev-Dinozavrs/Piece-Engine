@@ -9,6 +9,16 @@ namespace Piece {
 
 namespace {
 
+Entity FindEntityByUUID(Scene& scene, UUID uuid) {
+    auto view = scene.GetAllEntitiesViewWith<TagComponent>();
+    for (auto entity : view) {
+        if (view.get<TagComponent>(entity).id == uuid) {
+            return Entity{entity, &scene};
+        }
+    }
+    return {};
+}
+
 template <typename Component>
 void CopyComponent(entt::registry& destination, entt::registry& source, const std::unordered_map<UUID, entt::entity>& entityMap) {
     auto view = source.view<Component, TagComponent>();
@@ -36,6 +46,8 @@ Ref<Scene> Scene::Copy(const Ref<Scene>& other) {
     }
 
     CopyComponent<TransformComponent>(newScene->m_registry, other->m_registry, entityMap);
+    CopyComponent<HierarchyComponent>(newScene->m_registry, other->m_registry, entityMap);
+    CopyComponent<ImportedModelComponent>(newScene->m_registry, other->m_registry, entityMap);
     CopyComponent<MeshRendererComponent>(newScene->m_registry, other->m_registry, entityMap);
     CopyComponent<DirectionalLightComponent>(newScene->m_registry, other->m_registry, entityMap);
     CopyComponent<PointLightComponent>(newScene->m_registry, other->m_registry, entityMap);
@@ -43,56 +55,15 @@ Ref<Scene> Scene::Copy(const Ref<Scene>& other) {
     CopyComponent<CameraComponent>(newScene->m_registry, other->m_registry, entityMap);
 
     newScene->m_entityCount = other->m_entityCount;
-    newScene->m_directionalLightCount = other->m_directionalLightCount;
-    newScene->m_pointLightCount = other->m_pointLightCount;
-    newScene->m_spotLightCount = other->m_spotLightCount;
     return newScene;
 }
 
 Entity Scene::CreateEntity(const std::string& name, UUID uuid) {
     Entity entity{m_registry.create(), this};
     entity.AddComponent<TagComponent>(name.empty() ? "Entity" : name, uuid);
+    entity.AddComponent<HierarchyComponent>();
     entity.AddComponent<TransformComponent>();
     ++m_entityCount;
-    return entity;
-}
-
-Entity Scene::CreateQuad(const std::string& name, UUID uuid) {
-    Entity entity = CreateEntity(name, uuid);
-    entity.AddComponent<MeshRendererComponent>(PrimitiveType::Quad);
-    return entity;
-}
-
-Entity Scene::CreateCube(const std::string& name, UUID uuid) {
-    Entity entity = CreateEntity(name, uuid);
-    entity.AddComponent<MeshRendererComponent>(PrimitiveType::Cube);
-    return entity;
-}
-
-Entity Scene::CreateSphere(const std::string& name, UUID uuid) {
-    Entity entity = CreateEntity(name, uuid);
-    entity.AddComponent<MeshRendererComponent>(PrimitiveType::Sphere);
-    return entity;
-}
-
-Entity Scene::CreateDirectionalLight(UUID uuid) {
-    Entity entity = CreateEntity("Directional Light " + std::to_string(m_directionalLightCount), uuid);
-    entity.AddComponent<DirectionalLightComponent>();
-    ++m_directionalLightCount;
-    return entity;
-}
-
-Entity Scene::CreatePointLight(UUID uuid) {
-    Entity entity = CreateEntity("Point Light " + std::to_string(m_pointLightCount), uuid);
-    entity.AddComponent<PointLightComponent>();
-    ++m_pointLightCount;
-    return entity;
-}
-
-Entity Scene::CreateSpotLight(UUID uuid) {
-    Entity entity = CreateEntity("Spot Light " + std::to_string(m_spotLightCount), uuid);
-    entity.AddComponent<SpotLightComponent>();
-    ++m_spotLightCount;
     return entity;
 }
 
@@ -101,15 +72,29 @@ void Scene::DestroyEntity(Entity entity) {
         return;
     }
 
-    if (entity.HasComponent<DirectionalLightComponent>() && m_directionalLightCount > 0) {
-        --m_directionalLightCount;
+    const UUID entityUuid = entity.GetComponent<TagComponent>().id;
+
+    if (entity.HasComponent<HierarchyComponent>()) {
+        auto children = entity.GetComponent<HierarchyComponent>().children;
+        for (const UUID& childUuid : children) {
+            Entity child = FindEntityByUUID(*this, childUuid);
+            if (child) {
+                DestroyEntity(child);
+            }
+        }
+
+        const UUID parentUuid = entity.GetComponent<HierarchyComponent>().parent;
+        if (static_cast<uint64_t>(parentUuid) != 0) {
+            Entity parent = FindEntityByUUID(*this, parentUuid);
+            if (parent && parent.HasComponent<HierarchyComponent>()) {
+                auto& parentChildren = parent.GetComponent<HierarchyComponent>().children;
+                parentChildren.erase(
+                    std::remove(parentChildren.begin(), parentChildren.end(), entityUuid),
+                    parentChildren.end());
+            }
+        }
     }
-    if (entity.HasComponent<PointLightComponent>() && m_pointLightCount > 0) {
-        --m_pointLightCount;
-    }
-    if (entity.HasComponent<SpotLightComponent>() && m_spotLightCount > 0) {
-        --m_spotLightCount;
-    }
+
     if (m_entityCount > 0) {
         --m_entityCount;
     }
@@ -120,9 +105,6 @@ void Scene::DestroyEntity(Entity entity) {
 void Scene::Clear() {
     m_registry.clear();
     m_entityCount = 0;
-    m_directionalLightCount = 0;
-    m_pointLightCount = 0;
-    m_spotLightCount = 0;
 }
 
 void Scene::OnViewportResize(uint32_t width, uint32_t height) {

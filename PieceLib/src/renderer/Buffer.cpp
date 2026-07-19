@@ -75,15 +75,15 @@ VkDescriptorBufferInfo Buffer::descriptorInfo(VkDeviceSize size, VkDeviceSize of
     return info;
 }
 
-std::unique_ptr<Buffer> Buffer::createDeviceLocal(Device& device, const void* data, VkDeviceSize size, VkBufferUsageFlags usage) {
+Scope<Buffer> Buffer::createDeviceLocal(Device& device, const void* data, VkDeviceSize size, VkBufferUsageFlags usage) {
     // staging buffer
-    auto staging = std::make_unique<Buffer>(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    auto staging = CreateScope<Buffer>(device, size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     staging->map();
     staging->write(data, size, 0);
     staging->flush(size, 0);
     staging->unmap();
 
-    auto dst = std::make_unique<Buffer>(device, size, usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    auto dst = CreateScope<Buffer>(device, size, usage | VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
     device.copyBuffer(staging->getBuffer(), dst->getBuffer(), size);
     return dst;
 }

@@ -2,9 +2,9 @@
 
 #include <scene/Camera.h>
 #include <scene/Mesh.h>
+#include <core/Core.h>
 #include <glm/glm.hpp>
 #include <cstdint>
-#include <memory>
 #include <string>
 
 namespace Piece {
@@ -22,11 +22,12 @@ struct MaterialTextures {
     std::string heightPath;
     std::string roughnessPath;
     std::string ambientOcclusionPath;
+    std::string emissivePath;
 };
 
 class RenderObject {
 public:
-    RenderObject(std::shared_ptr<Mesh> mesh, PrimitiveType primitiveType = PrimitiveType::Unknown, uint32_t objectId = 0,
+    RenderObject(Ref<Mesh> mesh, PrimitiveType primitiveType = PrimitiveType::Unknown, uint32_t objectId = 0,
         const glm::vec3& position = glm::vec3(0.0f), const glm::vec3& rotation = glm::vec3(0.0f), const glm::vec3& scale = glm::vec3(1.0f))
         : mesh_(std::move(mesh)), primitiveType_(primitiveType), objectId_(objectId), position_(position), rotation_(rotation), scale_(scale) {}
 
@@ -44,14 +45,14 @@ public:
         return model;
     }
 
-    std::shared_ptr<Mesh> mesh() const { return mesh_; }
+    Ref<Mesh> mesh() const { return mesh_; }
     PrimitiveType primitiveType() const { return primitiveType_; }
     uint32_t objectId() const { return objectId_; }
     MaterialTextures& materialTextures() { return materialTextures_; }
     const MaterialTextures& materialTextures() const { return materialTextures_; }
 
 private:
-    std::shared_ptr<Mesh> mesh_;
+    Ref<Mesh> mesh_;
     PrimitiveType primitiveType_{PrimitiveType::Unknown};
     uint32_t objectId_{0};
     MaterialTextures materialTextures_{};

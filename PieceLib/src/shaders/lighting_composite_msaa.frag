@@ -2,10 +2,10 @@
 
 layout(location = 0) in vec2 fragUV;
 
-layout(set = 0, binding = 0) uniform sampler2D u_WorldPosRoughness;
-layout(set = 0, binding = 1) uniform sampler2D u_AlbedoAo;
-layout(set = 0, binding = 2) uniform sampler2D u_NormalAo;
-layout(set = 0, binding = 3) uniform sampler2D u_Emissive;
+layout(set = 0, binding = 0) uniform sampler2DMS u_WorldPosRoughness;
+layout(set = 0, binding = 1) uniform sampler2DMS u_AlbedoAo;
+layout(set = 0, binding = 2) uniform sampler2DMS u_NormalAo;
+layout(set = 0, binding = 3) uniform sampler2DMS u_Emissive;
 layout(set = 0, binding = 4) uniform sampler2D u_EnvDiffuse;
 layout(set = 0, binding = 5) uniform sampler2D u_EnvSpecular;
 
@@ -66,30 +66,47 @@ vec3 ComputeEnvironmentLighting(vec3 albedo, vec3 normal, vec3 viewDir, float ro
 }
 
 void main() {
-    vec4 worldPosRoughness = texture(u_WorldPosRoughness, fragUV);
-    vec4 albedoAo = texture(u_AlbedoAo, fragUV);
-    vec4 normalAo = texture(u_NormalAo, fragUV);
-    vec4 emissiveSample = texture(u_Emissive, fragUV);
+    ivec2 pixel = ivec2(fragUV * vec2(textureSize(u_WorldPosRoughness)));
+    int sampleCount = textureSamples(u_WorldPosRoughness);
 
-    if (emissiveSample.a <= 0.001) {
-        vec3 background = (u_Lighting.iblParams.x > 0.0)
-            ? ComputeBackgroundEnvironment()
-            : vec3(0.1, 0.1, 0.1);
+    vec3 accumColor = vec3(0.0);
+    float coveredSamples = 0.0;
+    vec3 background = (u_Lighting.iblParams.x > 0.0)
+        ? ComputeBackgroundEnvironment()
+        : vec3(0.1, 0.1, 0.1);
+
+    for (int i = 0; i < sampleCount; ++i) {
+        vec4 worldPosRoughness = texelFetch(u_WorldPosRoughness, pixel, i);
+        vec4 albedoAo = texelFetch(u_AlbedoAo, pixel, i);
+        vec4 normalAo = texelFetch(u_NormalAo, pixel, i);
+        vec4 emissiveSample = texelFetch(u_Emissive, pixel, i);
+
+        if (worldPosRoughness.w < 0.0) {
+            continue;
+        }
+
+        vec3 worldPos = worldPosRoughness.xyz;
+        vec3 albedo = albedoAo.rgb;
+        float roughness = clamp(worldPosRoughness.w, 0.0, 1.0);
+        vec3 normalEncoded = normalAo.rgb;
+        vec3 normal = normalize(normalEncoded * 2.0 - 1.0);
+        float ao = clamp(albedoAo.a, 0.0, 1.0);
+        float metallic = clamp(normalAo.a, 0.0, 1.0);
+        vec3 emissive = emissiveSample.rgb;
+
+        vec3 viewDir = normalize(u_Lighting.cameraPosition.xyz - worldPos);
+        vec3 litColor = ComputeLighting(albedo, normal, worldPos, viewDir, roughness, metallic, ao);
+        vec3 iblColor = ComputeEnvironmentLighting(albedo, normal, viewDir, roughness, metallic, ao);
+        accumColor += litColor + iblColor + emissive;
+        coveredSamples += 1.0;
+    }
+
+    if (coveredSamples <= 0.0) {
         outColor = vec4(background, 1.0);
         return;
     }
 
-    vec3 worldPos = worldPosRoughness.xyz;
-    vec3 albedo = albedoAo.rgb;
-    float roughness = clamp(worldPosRoughness.w, 0.0, 1.0);
-    vec3 normalEncoded = normalAo.rgb;
-    vec3 normal = normalize(normalEncoded * 2.0 - 1.0);
-    float ao = clamp(albedoAo.a, 0.0, 1.0);
-    float metallic = clamp(normalAo.a, 0.0, 1.0);
-    vec3 emissive = emissiveSample.rgb;
-
-    vec3 viewDir = normalize(u_Lighting.cameraPosition.xyz - worldPos);
-    vec3 litColor = ComputeLighting(albedo, normal, worldPos, viewDir, roughness, metallic, ao);
-    vec3 iblColor = ComputeEnvironmentLighting(albedo, normal, viewDir, roughness, metallic, ao);
-    outColor = vec4(litColor + iblColor + emissive, 1.0);
+    vec3 coveredColor = accumColor / coveredSamples;
+    float coverage = coveredSamples / float(sampleCount);
+    outColor = vec4(mix(background, coveredColor, coverage), 1.0);
 }

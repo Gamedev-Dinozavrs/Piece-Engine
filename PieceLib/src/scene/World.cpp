@@ -5,6 +5,7 @@
 #include <scene/Components.h>
 #include <scene/Entity.h>
 #include <scene/Scene.h>
+#include <renderer/Renderer.h>
 
 namespace Piece {
 
@@ -23,10 +24,11 @@ struct MaterialRecord {
     MaterialTextures textures{};
 };
 
-Ref<Scene> s_ActiveScene = CreateRef<Scene>();
+Ref<Scene> s_ActiveScene = nullptr;
 float s_SpecularStrength = 1.0f;
 float s_SpecularShininessMin = 8.0f;
 float s_SpecularShininessMax = 128.0f;
+EnvironmentSettings s_EnvironmentSettings{};
 uint32_t s_NextMaterialId = 1;
 std::vector<MaterialRecord> s_Materials;
 
@@ -35,6 +37,90 @@ Ref<Scene> EnsureScene() {
         s_ActiveScene = CreateRef<Scene>();
     }
     return s_ActiveScene;
+}
+
+void DestroyActiveSceneIfEmpty() {
+    if (s_ActiveScene && s_ActiveScene->IsEmpty()) {
+        s_ActiveScene.reset();
+    }
+}
+
+Entity SpawnPrimitiveEntity(Scene& scene, PrimitiveType primitiveType, const std::string& name) {
+    const char* defaultName = "Entity";
+    switch (primitiveType) {
+    case PrimitiveType::Quad:
+        defaultName = "Quad";
+        break;
+    case PrimitiveType::Cube:
+        defaultName = "Cube";
+        break;
+    case PrimitiveType::Sphere:
+        defaultName = "Sphere";
+        break;
+    default:
+        break;
+    }
+
+    Entity entity = scene.CreateEntity(name.empty() ? defaultName : name);
+    entity.AddComponent<MeshRendererComponent>(primitiveType, NormalSource::Vertex);
+    return entity;
+}
+
+Entity FindEntityByUUID(Scene& scene, UUID uuid) {
+    auto view = scene.GetAllEntitiesViewWith<TagComponent>();
+    for (auto handle : view) {
+        if (scene.GetAllEntitiesViewWith<TagComponent>().get<TagComponent>(handle).id == uuid) {
+            return Entity{handle, &scene};
+        }
+    }
+
+    return {};
+}
+
+void AddChildLink(Scene& scene, const UUID& parentUuid, const UUID& childUuid) {
+    Entity parent = FindEntityByUUID(scene, parentUuid);
+    if (!parent || !parent.HasComponent<HierarchyComponent>()) {
+        return;
+    }
+
+    auto& children = parent.GetComponent<HierarchyComponent>().children;
+    if (std::find(children.begin(), children.end(), childUuid) == children.end()) {
+        children.push_back(childUuid);
+    }
+}
+
+void RemoveChildLink(Scene& scene, const UUID& parentUuid, const UUID& childUuid) {
+    Entity parent = FindEntityByUUID(scene, parentUuid);
+    if (!parent || !parent.HasComponent<HierarchyComponent>()) {
+        return;
+    }
+
+    auto& children = parent.GetComponent<HierarchyComponent>().children;
+    children.erase(std::remove(children.begin(), children.end(), childUuid), children.end());
+}
+
+Entity SpawnDirectionalLightEntity(Scene& scene) {
+    auto existing = scene.GetAllEntitiesViewWith<DirectionalLightComponent>();
+    uint32_t count = 0;
+    for (auto handle : existing) {
+        (void)handle;
+        ++count;
+    }
+    Entity entity = scene.CreateEntity("Directional Light " + std::to_string(count));
+    entity.AddComponent<DirectionalLightComponent>();
+    return entity;
+}
+
+Entity SpawnPointLightEntity(Scene& scene) {
+    auto existing = scene.GetAllEntitiesViewWith<PointLightComponent>();
+    uint32_t count = 0;
+    for (auto handle : existing) {
+        (void)handle;
+        ++count;
+    }
+    Entity entity = scene.CreateEntity("Point Light " + std::to_string(count));
+    entity.AddComponent<PointLightComponent>();
+    return entity;
 }
 
 Entity FindDirectionalLightEntity(Scene& scene) {
@@ -57,35 +143,46 @@ std::vector<Entity> CollectPointLights(Scene& scene) {
 } // namespace
 
 Ref<Scene> GetActiveScene() {
-    return EnsureScene();
+    return s_ActiveScene;
 }
 
 void SetActiveScene(const Ref<Scene>& scene) {
-    s_ActiveScene = scene ? scene : CreateRef<Scene>();
+    s_ActiveScene = scene;
 }
 
 uint32_t SpawnPrimitive(PrimitiveType primitiveType, const SpawnTransform& transform, const std::string& name) {
     Ref<Scene> scene = EnsureScene();
-    Entity entity;
-    switch (primitiveType) {
-    case PrimitiveType::Quad:
-        entity = scene->CreateQuad(name.empty() ? "Quad" : name);
-        break;
-    case PrimitiveType::Cube:
-        entity = scene->CreateCube(name.empty() ? "Cube" : name);
-        break;
-    case PrimitiveType::Sphere:
-        entity = scene->CreateSphere(name.empty() ? "Sphere" : name);
-        break;
-    default:
+    if (primitiveType == PrimitiveType::Unknown) {
         return 0;
     }
+
+    Entity entity = SpawnPrimitiveEntity(*scene, primitiveType, name);
 
     auto& transformComponent = entity.GetComponent<TransformComponent>();
     transformComponent.position = transform.position;
     transformComponent.rotation = transform.rotation;
     transformComponent.scale = transform.scale;
     return static_cast<uint32_t>(entity);
+}
+
+bool DestroyEntity(uint32_t entityId) {
+    if (!s_ActiveScene) {
+        return false;
+    }
+
+    auto view = s_ActiveScene->GetAllEntitiesViewWith<TagComponent>();
+    for (auto handle : view) {
+        if (static_cast<uint32_t>(handle) != entityId) {
+            continue;
+        }
+
+        Renderer::WaitIdle();
+        s_ActiveScene->DestroyEntity(Entity{handle, s_ActiveScene.get()});
+        DestroyActiveSceneIfEmpty();
+        return true;
+    }
+
+    return false;
 }
 
 uint32_t SpawnQuad(const SpawnTransform& transform) {
@@ -100,9 +197,103 @@ uint32_t SpawnSphere(const SpawnTransform& transform) {
     return SpawnPrimitive(PrimitiveType::Sphere, transform, "Sphere");
 }
 
+uint32_t SpawnMesh(const Ref<Mesh>& mesh, const SpawnTransform& transform, const std::string& name, bool hasVertexNormals) {
+    if (!mesh) {
+        return 0;
+    }
+
+    Ref<Scene> scene = EnsureScene();
+    Entity entity = scene->CreateEntity(name.empty() ? "Imported Mesh" : name);
+    auto& renderer = entity.AddComponent<MeshRendererComponent>(
+        PrimitiveType::Unknown,
+        hasVertexNormals ? NormalSource::Vertex : NormalSource::Derivative);
+    renderer.mesh = mesh;
+
+    auto& transformComponent = entity.GetComponent<TransformComponent>();
+    transformComponent.position = transform.position;
+    transformComponent.rotation = transform.rotation;
+    transformComponent.scale = transform.scale;
+    return static_cast<uint32_t>(entity);
+}
+
+uint32_t CreateEmptyObject(const std::string& name) {
+    Ref<Scene> scene = EnsureScene();
+    Entity entity = scene->CreateEntity(name.empty() ? "Empty Object" : name);
+    return static_cast<uint32_t>(entity);
+}
+
+bool SetEntityParent(uint32_t childEntityId, uint32_t parentEntityId) {
+    if (!s_ActiveScene) {
+        return false;
+    }
+
+    Ref<Scene> scene = s_ActiveScene;
+    Entity child;
+    Entity parent;
+    auto view = scene->GetAllEntitiesViewWith<TagComponent>();
+    for (auto handle : view) {
+        if (static_cast<uint32_t>(handle) == childEntityId) {
+            child = Entity{handle, scene.get()};
+        } else if (static_cast<uint32_t>(handle) == parentEntityId) {
+            parent = Entity{handle, scene.get()};
+        }
+    }
+
+    if (!child || !child.HasComponent<HierarchyComponent>()) {
+        return false;
+    }
+
+    if (parentEntityId == childEntityId) {
+        return false;
+    }
+
+    const bool hasParent = parentEntityId != 0;
+    if (hasParent && (!parent || !parent.HasComponent<HierarchyComponent>())) {
+        return false;
+    }
+
+    const UUID childUuid = child.GetComponent<TagComponent>().id;
+    UUID parentUuid{0};
+    if (hasParent) {
+        parentUuid = parent.GetComponent<TagComponent>().id;
+
+        // Prevent cycles: a node cannot be parented to any of its descendants.
+        Entity cursor = parent;
+        while (cursor && cursor.HasComponent<HierarchyComponent>()) {
+            const UUID cursorParentUuid = cursor.GetComponent<HierarchyComponent>().parent;
+            if (cursorParentUuid == childUuid) {
+                return false;
+            }
+            if (static_cast<uint64_t>(cursorParentUuid) == 0) {
+                break;
+            }
+            cursor = FindEntityByUUID(*scene, cursorParentUuid);
+        }
+    }
+
+    if (child.GetComponent<HierarchyComponent>().parent == parentUuid) {
+        return true;
+    }
+
+    const UUID oldParentUuid = child.GetComponent<HierarchyComponent>().parent;
+    if (static_cast<uint64_t>(oldParentUuid) != 0) {
+        RemoveChildLink(*scene, oldParentUuid, childUuid);
+    }
+
+    child.GetComponent<HierarchyComponent>().parent = parentUuid;
+    if (hasParent) {
+        AddChildLink(*scene, parentUuid, childUuid);
+    }
+    return true;
+}
+
 std::vector<RenderEntityView> GetRenderEntities() {
     std::vector<RenderEntityView> entities;
-    Ref<Scene> scene = EnsureScene();
+    if (!s_ActiveScene) {
+        return entities;
+    }
+
+    Ref<Scene> scene = s_ActiveScene;
     auto view = scene->GetAllEntitiesViewWith<TagComponent, MeshRendererComponent>();
     for (auto handle : view) {
         const auto& tag = view.get<TagComponent>(handle);
@@ -124,7 +315,11 @@ std::vector<RenderEntityView> GetRenderEntities() {
 }
 
 bool SetEntityTransform(uint32_t entityId, const SpawnTransform& transform) {
-    Ref<Scene> scene = EnsureScene();
+    if (!s_ActiveScene) {
+        return false;
+    }
+
+    Ref<Scene> scene = s_ActiveScene;
     auto view = scene->GetAllEntitiesViewWith<TransformComponent>();
     for (auto handle : view) {
         if (static_cast<uint32_t>(handle) != entityId) {
@@ -142,7 +337,11 @@ bool SetEntityTransform(uint32_t entityId, const SpawnTransform& transform) {
 }
 
 bool SetEntityMaterial(uint32_t entityId, uint32_t materialId) {
-    Ref<Scene> scene = EnsureScene();
+    if (!s_ActiveScene) {
+        return false;
+    }
+
+    Ref<Scene> scene = s_ActiveScene;
     auto view = scene->GetAllEntitiesViewWith<MeshRendererComponent>();
     for (auto handle : view) {
         if (static_cast<uint32_t>(handle) != entityId) {
@@ -199,6 +398,9 @@ bool SetMaterialTexturePath(uint32_t materialId, TextureSlot slot, const std::st
         case TextureSlot::AmbientOcclusion:
             material.textures.ambientOcclusionPath = path;
             return true;
+        case TextureSlot::Emissive:
+            material.textures.emissivePath = path;
+            return true;
         default:
             return false;
         }
@@ -223,7 +425,14 @@ LightingSettings GetLightingSettings() {
     settings.specularShininessMin = s_SpecularShininessMin;
     settings.specularShininessMax = s_SpecularShininessMax;
 
-    Ref<Scene> scene = EnsureScene();
+    if (!s_ActiveScene) {
+        settings.directionalDirection = kDefaultDirectionalDirection;
+        settings.directionalColor = kDefaultDirectionalColor;
+        settings.directionalIntensity = kDefaultDirectionalIntensity;
+        return settings;
+    }
+
+    Ref<Scene> scene = s_ActiveScene;
 
     Entity directional = FindDirectionalLightEntity(*scene);
     if (directional) {
@@ -253,32 +462,39 @@ LightingSettings GetLightingSettings() {
 }
 
 void SetLightingSettings(const LightingSettings& settings) {
-    Ref<Scene> scene = EnsureScene();
-
     s_SpecularStrength = std::max(0.0f, settings.specularStrength);
     s_SpecularShininessMin = std::max(1.0f, settings.specularShininessMin);
     s_SpecularShininessMax = std::max(s_SpecularShininessMin, settings.specularShininessMax);
 
+    const uint32_t targetCount = std::min<uint32_t>(settings.pointLightCount, kMaxPointLights);
+    const bool needsScene = settings.directionalEnabled || targetCount > 0;
+    if (!needsScene && !s_ActiveScene) {
+        return;
+    }
+
+    Ref<Scene> scene = EnsureScene();
+
     Entity directional = FindDirectionalLightEntity(*scene);
     if (settings.directionalEnabled) {
         if (!directional) {
-            directional = scene->CreateDirectionalLight();
+            directional = SpawnDirectionalLightEntity(*scene);
         }
         auto& light = directional.GetComponent<DirectionalLightComponent>();
         light.direction = settings.directionalDirection;
         light.color = settings.directionalColor;
         light.intensity = std::max(0.0f, settings.directionalIntensity);
     } else if (directional) {
+        Renderer::WaitIdle();
         scene->DestroyEntity(directional);
     }
 
     std::vector<Entity> pointLights = CollectPointLights(*scene);
-    const uint32_t targetCount = std::min<uint32_t>(settings.pointLightCount, kMaxPointLights);
 
     while (pointLights.size() < targetCount) {
-        pointLights.emplace_back(scene->CreatePointLight());
+        pointLights.emplace_back(SpawnPointLightEntity(*scene));
     }
     while (pointLights.size() > targetCount) {
+        Renderer::WaitIdle();
         scene->DestroyEntity(pointLights.back());
         pointLights.pop_back();
     }
@@ -291,6 +507,34 @@ void SetLightingSettings(const LightingSettings& settings) {
         light.color = settings.pointLights[i].color;
         light.intensity = std::max(0.0f, settings.pointLights[i].intensity);
     }
+
+    DestroyActiveSceneIfEmpty();
+}
+
+EnvironmentSettings GetEnvironmentSettings() {
+    return s_EnvironmentSettings;
+}
+
+void SetEnvironmentSettings(const EnvironmentSettings& settings) {
+    s_EnvironmentSettings.enabled = settings.enabled;
+    s_EnvironmentSettings.diffuseMapPath = settings.diffuseMapPath;
+    s_EnvironmentSettings.specularMapPath = settings.specularMapPath;
+    s_EnvironmentSettings.intensity = std::max(0.0f, settings.intensity);
+    s_EnvironmentSettings.diffuseStrength = std::max(0.0f, settings.diffuseStrength);
+    s_EnvironmentSettings.specularStrength = std::max(0.0f, settings.specularStrength);
+    s_EnvironmentSettings.aaTechnique = settings.aaTechnique;
+    s_EnvironmentSettings.msaaSampleCount = settings.msaaSampleCount;
+}
+
+void ClearScene() {
+    if (s_ActiveScene) {
+        Renderer::WaitIdle();
+        s_ActiveScene->Clear();
+        s_ActiveScene.reset();
+    }
+    s_Materials.clear();
+    s_NextMaterialId = 1;
+    s_EnvironmentSettings = EnvironmentSettings{};
 }
 
 } // namespace World

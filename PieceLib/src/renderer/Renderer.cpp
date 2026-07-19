@@ -1,34 +1,8 @@
 #include <PiecePCH.h>
+#include <Piece.h>
 
-#include <renderer/Renderer.h>
-#include <renderer/Device.h>
-#include <renderer/FrameInfo.h>
-#include <renderer/FrameResources.h>
-#include <renderer/RendererContext.h>
-#include <renderer/Surface.h>
-#include <renderer/SwapChain.h>
-#include <renderer/Pipeline.h>
-#include <renderer/Descriptors.h>
-#include <renderer/Shader.h>
-#include <renderer/ShaderLibrary.h>
-#include <renderer/Texture.h>
-#include <renderer/VulkanContext.h>
-#include <renderer/RenderPass.h>
-#include <renderer/RendererInternals.h>
-#include <renderer/systems/LightingRenderSystem.h>
-#include <renderer/systems/SceneRenderSystem.h>
-#include <renderer/passes/GeometryPass.h>
-#include <renderer/passes/LightingPass.h>
-#include <scene/Components.h>
-#include <scene/EditorCamera.h>
-#include <scene/Entity.h>
-#include <scene/Mesh.h>
-#include <scene/PrimitiveMeshData.h>
-#include <scene/Scene.h>
-#include <scene/World.h>
 #include "imgui.h"
 #include <GLFW/glfw3.h>
-#include <glm/gtc/matrix_transform.hpp>
 
 #ifndef PIECE_SHADER_DIR
 #define PIECE_SHADER_DIR "./PieceLib/src/shaders"
@@ -39,8 +13,11 @@ namespace Piece
 
     namespace
     {
-        std::unique_ptr<RendererContext> s_Context = nullptr;
+        Scope<RendererContext> s_Context = nullptr;
         std::function<void()> s_SwapChainRecreatedCallback = nullptr;
+
+        constexpr uint32_t kMaterialFlagHasNormalMap = 1u << 0;
+        constexpr uint32_t kMaterialFlagHasEmissiveMap = 1u << 1;
 
         VkExtent2D GetValidSwapChainExtent(Window *window)
         {
@@ -61,10 +38,22 @@ namespace Piece
 
         std::string MakeMaterialSignature(const MaterialTextures &material)
         {
-            return material.albedoPath + "|" + material.roughnessPath + "|" + material.ambientOcclusionPath;
+            return material.albedoPath + "|" + material.normalPath + "|" + material.roughnessPath + "|" + material.ambientOcclusionPath + "|" + material.emissivePath;
         }
 
-        std::shared_ptr<Texture> GetOrCreateTexture(RendererContext &ctx, const std::string &texturePath)
+        std::string MakeEnvironmentSignature(const EnvironmentSettings& environment)
+        {
+            return (environment.enabled ? "1|" : "0|")
+                + environment.diffuseMapPath + "|"
+                + environment.specularMapPath + "|"
+                + std::to_string(environment.intensity) + "|"
+                + std::to_string(environment.diffuseStrength) + "|"
+                + std::to_string(environment.specularStrength) + "|"
+                + std::to_string(static_cast<int>(environment.aaTechnique)) + "|"
+                + std::to_string(environment.msaaSampleCount);
+        }
+
+        Ref<Texture> GetOrCreateTexture(RendererContext &ctx, const std::string &texturePath)
         {
             const std::string key = texturePath.empty() ? "__DEFAULT_WHITE__" : texturePath;
             auto it = ctx.textureCache.find(key);
@@ -73,9 +62,80 @@ namespace Piece
                 return it->second;
             }
 
-            std::shared_ptr<Texture> texture = std::make_shared<Texture>(*ctx.deviceWrapper, texturePath);
+            Ref<Texture> texture = CreateRef<Texture>(*ctx.deviceWrapper, texturePath);
             ctx.textureCache[key] = texture;
             return texture;
+        }
+
+        void EnsureCompositeEnvironmentDescriptors(RendererContext& ctx)
+        {
+            if (!ctx.compositeSetLayout || !ctx.compositeDescriptorPool || ctx.compositeDescriptorSets.empty()) {
+                return;
+            }
+
+            const EnvironmentSettings environment = World::GetEnvironmentSettings();
+            const std::string signature = MakeEnvironmentSignature(environment);
+            if (ctx.boundEnvironmentSignature == signature) {
+                return;
+            }
+
+            const bool useMsaaDescriptors =
+                environment.aaTechnique == AATechnique::MSAA &&
+                ctx.msaaSamples != VK_SAMPLE_COUNT_1_BIT;
+
+            auto envDiffuseTexture = GetOrCreateTexture(ctx, environment.diffuseMapPath);
+            auto envSpecularTexture = GetOrCreateTexture(ctx, environment.specularMapPath);
+
+            for (size_t i = 0; i < ctx.compositeDescriptorSets.size(); ++i) {
+                VkDescriptorImageInfo worldPosRoughnessInfo{};
+                worldPosRoughnessInfo.sampler = ctx.compositeSampler;
+                worldPosRoughnessInfo.imageView = useMsaaDescriptors
+                    ? ctx.offscreenFrames[i].msaaWorldPosRoughnessImageView
+                    : ctx.offscreenFrames[i].worldPosRoughnessImageView;
+                worldPosRoughnessInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+                VkDescriptorImageInfo albedoAoInfo{};
+                albedoAoInfo.sampler = ctx.compositeSampler;
+                albedoAoInfo.imageView = useMsaaDescriptors
+                    ? ctx.offscreenFrames[i].msaaAlbedoAoImageView
+                    : ctx.offscreenFrames[i].albedoAoImageView;
+                albedoAoInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+                VkDescriptorImageInfo normalAoInfo{};
+                normalAoInfo.sampler = ctx.compositeSampler;
+                normalAoInfo.imageView = useMsaaDescriptors
+                    ? ctx.offscreenFrames[i].msaaNormalAoImageView
+                    : ctx.offscreenFrames[i].normalAoImageView;
+                normalAoInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+                VkDescriptorImageInfo emissiveInfo{};
+                emissiveInfo.sampler = ctx.compositeSampler;
+                emissiveInfo.imageView = useMsaaDescriptors
+                    ? ctx.offscreenFrames[i].msaaEmissiveImageView
+                    : ctx.offscreenFrames[i].emissiveImageView;
+                emissiveInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+                VkDescriptorImageInfo envDiffuseInfo{};
+                envDiffuseInfo.sampler = envDiffuseTexture->getSampler();
+                envDiffuseInfo.imageView = envDiffuseTexture->getImageView();
+                envDiffuseInfo.imageLayout = envDiffuseTexture->getImageLayout();
+
+                VkDescriptorImageInfo envSpecularInfo{};
+                envSpecularInfo.sampler = envSpecularTexture->getSampler();
+                envSpecularInfo.imageView = envSpecularTexture->getImageView();
+                envSpecularInfo.imageLayout = envSpecularTexture->getImageLayout();
+
+                DescriptorWriter(*ctx.compositeSetLayout, *ctx.compositeDescriptorPool)
+                    .writeImage(0, &worldPosRoughnessInfo)
+                    .writeImage(1, &albedoAoInfo)
+                    .writeImage(2, &normalAoInfo)
+                    .writeImage(3, &emissiveInfo)
+                    .writeImage(4, &envDiffuseInfo)
+                    .writeImage(5, &envSpecularInfo)
+                    .overwrite(ctx.compositeDescriptorSets[i]);
+            }
+
+            ctx.boundEnvironmentSignature = signature;
         }
 
         void EnsureObjectMaterialDescriptor(RendererContext &ctx, uint32_t objectId, uint32_t materialId, const MaterialTextures &material)
@@ -99,13 +159,20 @@ namespace Piece
             }
 
             auto albedoTexture = GetOrCreateTexture(ctx, resolvedMaterial.albedoPath);
+            auto normalTexture = GetOrCreateTexture(ctx, resolvedMaterial.normalPath);
             auto roughnessTexture = GetOrCreateTexture(ctx, resolvedMaterial.roughnessPath);
             auto aoTexture = GetOrCreateTexture(ctx, resolvedMaterial.ambientOcclusionPath);
+            auto emissiveTexture = GetOrCreateTexture(ctx, resolvedMaterial.emissivePath);
 
             VkDescriptorImageInfo albedoImageInfo{};
             albedoImageInfo.sampler = albedoTexture->getSampler();
             albedoImageInfo.imageView = albedoTexture->getImageView();
             albedoImageInfo.imageLayout = albedoTexture->getImageLayout();
+
+            VkDescriptorImageInfo normalImageInfo{};
+            normalImageInfo.sampler = normalTexture->getSampler();
+            normalImageInfo.imageView = normalTexture->getImageView();
+            normalImageInfo.imageLayout = normalTexture->getImageLayout();
 
             VkDescriptorImageInfo roughnessImageInfo{};
             roughnessImageInfo.sampler = roughnessTexture->getSampler();
@@ -117,11 +184,27 @@ namespace Piece
             aoImageInfo.imageView = aoTexture->getImageView();
             aoImageInfo.imageLayout = aoTexture->getImageLayout();
 
+            VkDescriptorImageInfo emissiveImageInfo{};
+            emissiveImageInfo.sampler = emissiveTexture->getSampler();
+            emissiveImageInfo.imageView = emissiveTexture->getImageView();
+            emissiveImageInfo.imageLayout = emissiveTexture->getImageLayout();
+
             DescriptorWriter writer(*ctx.materialSetLayout, *ctx.materialDescriptorPool);
             writer.writeImage(0, &albedoImageInfo);
-            writer.writeImage(1, &roughnessImageInfo);
-            writer.writeImage(2, &aoImageInfo);
+            writer.writeImage(1, &normalImageInfo);
+            writer.writeImage(2, &roughnessImageInfo);
+            writer.writeImage(3, &aoImageInfo);
+            writer.writeImage(4, &emissiveImageInfo);
             writer.overwrite(ctx.objectMaterialDescriptors[objectId]);
+
+            uint32_t materialFlags = 0;
+            if (!resolvedMaterial.normalPath.empty()) {
+                materialFlags |= kMaterialFlagHasNormalMap;
+            }
+            if (!resolvedMaterial.emissivePath.empty()) {
+                materialFlags |= kMaterialFlagHasEmissiveMap;
+            }
+            ctx.objectMaterialFlags[objectId] = materialFlags;
             ctx.objectBoundMaterialSignature[objectId] = materialSignature;
         }
 
@@ -131,31 +214,16 @@ namespace Piece
             const glm::vec3 &rotation,
             const glm::vec3 &scale)
         {
-            if (!s_Context || !s_Context->scene)
+            if (!s_Context)
             {
                 return 0;
             }
 
-            RendererContext &ctx = *s_Context;
-            Entity entity;
-            switch (primitiveType)
-            {
-            case PrimitiveType::Cube:
-                entity = ctx.scene->CreateCube();
-                break;
-            case PrimitiveType::Sphere:
-                entity = ctx.scene->CreateSphere();
-                break;
-            case PrimitiveType::Quad:
-            default:
-                entity = ctx.scene->CreateQuad();
-                break;
-            }
-            auto &transform = entity.GetComponent<TransformComponent>();
+            SpawnTransform transform{};
             transform.position = position;
             transform.rotation = rotation;
             transform.scale = scale;
-            return static_cast<uint32_t>(entity);
+            return World::SpawnPrimitive(primitiveType, transform);
         }
 
         PointLightSettings BuildDefaultPointLight(const glm::vec3 &basePosition, uint32_t index)
@@ -218,42 +286,60 @@ namespace Piece
 
             vkBeginCommandBuffer(commandBuffer, &beginInfo);
 
-            const RendererContext &ctx = *s_Context;
+            RendererContext &ctx = *s_Context;
             GeometryPass::Record(ctx, frameInfo);
             LightingPass::Record(ctx, frameInfo);
 
             vkEndCommandBuffer(commandBuffer);
         }
 
-        VkSampleCountFlagBits ChooseMsaaSamples(const VkPhysicalDeviceProperties& props)
+        VkSampleCountFlagBits ResolveMsaaSamples(const VkPhysicalDeviceProperties& props, AATechnique technique, uint32_t requestedSamples)
         {
             VkSampleCountFlags counts = props.limits.framebufferColorSampleCounts &
             props.limits.framebufferDepthSampleCounts;
-            
-            PIECE_CORE_INFO("Available MSAA sample counts mask: {}", static_cast<uint32_t>(counts));
-            if (counts & VK_SAMPLE_COUNT_8_BIT)
-                return VK_SAMPLE_COUNT_8_BIT;
 
-            if (counts & VK_SAMPLE_COUNT_4_BIT)
-                return VK_SAMPLE_COUNT_4_BIT;
+            if (technique != AATechnique::MSAA) {
+                return VK_SAMPLE_COUNT_1_BIT;
+            }
 
-            if (counts & VK_SAMPLE_COUNT_2_BIT)
-                return VK_SAMPLE_COUNT_2_BIT;
+            const VkSampleCountFlagBits preferredCounts[] = {
+                VK_SAMPLE_COUNT_8_BIT,
+                VK_SAMPLE_COUNT_4_BIT,
+                VK_SAMPLE_COUNT_2_BIT,
+                VK_SAMPLE_COUNT_1_BIT,
+            };
+
+            for (VkSampleCountFlagBits sampleCount : preferredCounts) {
+                if (static_cast<uint32_t>(sampleCount) <= requestedSamples && (counts & sampleCount)) {
+                    return sampleCount;
+                }
+            }
 
             return VK_SAMPLE_COUNT_1_BIT;
+        }
+
+        VkSampleCountFlagBits ChooseMsaaSamples(const VkPhysicalDeviceProperties& props, AATechnique technique, uint32_t requestedSamples)
+        {
+            VkSampleCountFlagBits sampleCount = ResolveMsaaSamples(props, technique, requestedSamples);
+            PIECE_CORE_INFO(
+                "Selected AA technique {} requested MSAA {} -> resolved MSAA {}",
+                static_cast<int>(technique),
+                requestedSamples,
+                static_cast<uint32_t>(sampleCount));
+            return sampleCount;
         }
     }
 
     void Renderer::Init(Window *window)
     {
         PIECE_CORE_ASSERT(window != nullptr, "Window must not be null");
-        s_Context = std::make_unique<RendererContext>();
+        s_Context = CreateScope<RendererContext>();
         RendererContext &ctx = *s_Context;
 
         ctx.window = window;
-        ctx.vulkanContext = std::make_unique<VulkanContext>();
-        ctx.surfaceWrapper = std::make_unique<Surface>(*ctx.vulkanContext, window);
-        ctx.deviceWrapper = std::make_unique<Device>(*ctx.surfaceWrapper, *ctx.vulkanContext);
+        ctx.vulkanContext = CreateScope<VulkanContext>();
+        ctx.surfaceWrapper = CreateScope<Surface>(*ctx.vulkanContext, window);
+        ctx.deviceWrapper = CreateScope<Device>(*ctx.surfaceWrapper, *ctx.vulkanContext);
 
         ctx.device = ctx.deviceWrapper->device();
         ctx.physicalDevice = ctx.deviceWrapper->getPhysicalDevice();
@@ -262,15 +348,17 @@ namespace Piece
         ctx.presentQueue = ctx.deviceWrapper->presentQueue();
         ctx.scene = World::GetActiveScene();
 
-        ctx.msaaSamples = ChooseMsaaSamples(ctx.deviceWrapper->properties);
+        const EnvironmentSettings environment = World::GetEnvironmentSettings();
+        ctx.msaaSamples = ChooseMsaaSamples(ctx.deviceWrapper->properties, environment.aaTechnique, environment.msaaSampleCount);
+        ctx.taaHistoryInitialized = false;
 
         // create swapchain wrapper which also creates image views, render pass, framebuffers and sync
         VkExtent2D extent = GetValidSwapChainExtent(ctx.window);
-        ctx.swapChainWrapper = std::make_unique<SwapChain>(*ctx.deviceWrapper, extent);
+        ctx.swapChainWrapper = CreateScope<SwapChain>(*ctx.deviceWrapper, extent);
 
         ctx.swapChainImageFormat = ctx.swapChainWrapper->getSwapChainImageFormat();
         ctx.swapChainExtent = ctx.swapChainWrapper->getSwapChainExtent();
-        ctx.lightingRenderPass = ctx.swapChainWrapper->getRenderPass();
+        ctx.presentRenderPass = ctx.swapChainWrapper->getRenderPass();
         ctx.offscreenWorldPosRoughnessFormat = ctx.deviceWrapper->findSupportedFormat(
             {VK_FORMAT_R16G16B16A16_SFLOAT, VK_FORMAT_R32G32B32A32_SFLOAT},
             VK_IMAGE_TILING_OPTIMAL,
@@ -279,9 +367,10 @@ namespace Piece
             {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_B8G8R8A8_UNORM},
             VK_IMAGE_TILING_OPTIMAL,
             VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
+        ctx.offscreenLightingColorFormat = ctx.offscreenWorldPosRoughnessFormat;
 
         VkPushConstantRange pushConstantRange{};
-        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
         pushConstantRange.offset = 0;
         pushConstantRange.size = sizeof(ScenePushConstants);
 
@@ -291,19 +380,23 @@ namespace Piece
                                     .addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                                     .addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                                     .addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                                    .addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                                    .addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                                     .build();
 
         LightingRenderSystem::Initialize(ctx);
 
         ctx.materialDescriptorPool = DescriptorPool::Builder(*ctx.deviceWrapper)
                                          .setMaxSets(2048)
-                                         .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2048 * 3)
+                                         .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2048 * 5)
                                          .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT)
                                          .build();
 
         RendererInternals::CreateGeometryRenderPass(ctx);
+    RendererInternals::CreateLightingRenderPass(ctx);
         RendererInternals::CreateOffscreenResources(ctx);
         RendererInternals::CreateCompositeResources(ctx);
+        EnsureCompositeEnvironmentDescriptors(ctx);
 
         std::vector<VkDescriptorSetLayout> geometrySetLayouts{
             ctx.materialSetLayout->getDescriptorSetLayout(),
@@ -325,27 +418,39 @@ namespace Piece
         result = vkCreatePipelineLayout(ctx.device, &lightingLayoutInfo, nullptr, &ctx.lightingPipelineLayout);
         PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create lighting pipeline layout");
 
+        VkPipelineLayoutCreateInfo fxaaLayoutInfo{};
+        fxaaLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        VkDescriptorSetLayout fxaaSetLayout = ctx.fxaaSetLayout->getDescriptorSetLayout();
+        fxaaLayoutInfo.setLayoutCount = 1;
+        fxaaLayoutInfo.pSetLayouts = &fxaaSetLayout;
+        result = vkCreatePipelineLayout(ctx.device, &fxaaLayoutInfo, nullptr, &ctx.fxaaPipelineLayout);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create FXAA pipeline layout");
+
         const PrimitiveMeshData quadMeshData = PrimitiveMeshDataFactory::CreateQuad();
-        ctx.quadMesh = std::make_shared<Mesh>(*ctx.deviceWrapper, quadMeshData.vertices, quadMeshData.indices);
+        ctx.quadMesh = CreateRef<Mesh>(*ctx.deviceWrapper, quadMeshData.vertices, quadMeshData.indices);
 
         const PrimitiveMeshData cubeMeshData = PrimitiveMeshDataFactory::CreateCube();
-        ctx.cubeMesh = std::make_shared<Mesh>(*ctx.deviceWrapper, cubeMeshData.vertices, cubeMeshData.indices);
+        ctx.cubeMesh = CreateRef<Mesh>(*ctx.deviceWrapper, cubeMeshData.vertices, cubeMeshData.indices);
 
         const PrimitiveMeshData sphereMeshData = PrimitiveMeshDataFactory::CreateSphere();
-        ctx.sphereMesh = std::make_shared<Mesh>(*ctx.deviceWrapper, sphereMeshData.vertices, sphereMeshData.indices);
+        ctx.sphereMesh = CreateRef<Mesh>(*ctx.deviceWrapper, sphereMeshData.vertices, sphereMeshData.indices);
 
-        ctx.camera = std::make_shared<EditorCamera>(70.0f, static_cast<float>(extent.width) / static_cast<float>(extent.height), 0.1f, 100.0f);
+        ctx.camera = CreateRef<EditorCamera>(70.0f, static_cast<float>(extent.width) / static_cast<float>(extent.height), 0.1f, 100.0f);
         if (ctx.scene)
         {
             ctx.scene->OnViewportResize(extent.width, extent.height);
         }
 
         // Load shaders through the library — loaded once, reused across pipeline recreations.
-        ctx.shaderLibrary = std::make_unique<ShaderLibrary>(*ctx.deviceWrapper);
+        ctx.shaderLibrary = CreateScope<ShaderLibrary>(*ctx.deviceWrapper);
         ctx.shaderLibrary->Load("textured.vert", PIECE_SHADER_DIR "/textured.vert.spv", Shader::Stage::Vertex);
         ctx.shaderLibrary->Load("textured.frag", PIECE_SHADER_DIR "/textured.frag.spv", Shader::Stage::Fragment);
         ctx.shaderLibrary->Load("lighting_composite.vert", PIECE_SHADER_DIR "/lighting_composite.vert.spv", Shader::Stage::Vertex);
         ctx.shaderLibrary->Load("lighting_composite.frag", PIECE_SHADER_DIR "/lighting_composite.frag.spv", Shader::Stage::Fragment);
+        ctx.shaderLibrary->Load("lighting_composite_msaa.frag", PIECE_SHADER_DIR "/lighting_composite_msaa.frag.spv", Shader::Stage::Fragment);
+        ctx.shaderLibrary->Load("present.frag", PIECE_SHADER_DIR "/present.frag.spv", Shader::Stage::Fragment);
+        ctx.shaderLibrary->Load("taa.frag", PIECE_SHADER_DIR "/taa.frag.spv", Shader::Stage::Fragment);
+        ctx.shaderLibrary->Load("fxaa.frag", PIECE_SHADER_DIR "/fxaa.frag.spv", Shader::Stage::Fragment);
 
         RendererInternals::CreateGraphicsPipeline(ctx);
         // command pool is created by Device; get it
@@ -373,6 +478,8 @@ namespace Piece
         ctx.camera.reset();
         ctx.objectMaterialDescriptors.clear();
         ctx.objectBoundMaterialSignature.clear();
+        ctx.objectMaterialFlags.clear();
+        ctx.boundEnvironmentSignature.clear();
         ctx.textureCache.clear();
         LightingRenderSystem::Shutdown(ctx);
         RendererInternals::DestroyCompositeResources(ctx);
@@ -384,17 +491,16 @@ namespace Piece
 
         ctx.geometryPipeline.reset();
         ctx.lightingPipeline.reset();
+        ctx.presentPipeline.reset();
+        ctx.taaPipeline.reset();
+        ctx.fxaaPipeline.reset();
         RendererInternals::DestroyPipelineLayouts(ctx);
+        RendererInternals::DestroyLightingRenderPass(ctx);
 
         CleanupSwapChain();
 
         for (FrameResources &frame : ctx.frameResources)
         {
-            if (frame.renderFinishedSemaphore != VK_NULL_HANDLE)
-            {
-                vkDestroySemaphore(ctx.device, frame.renderFinishedSemaphore, nullptr);
-                frame.renderFinishedSemaphore = VK_NULL_HANDLE;
-            }
             if (frame.imageAvailableSemaphore != VK_NULL_HANDLE)
             {
                 vkDestroySemaphore(ctx.device, frame.imageAvailableSemaphore, nullptr);
@@ -427,6 +533,21 @@ namespace Piece
     {
         PIECE_CORE_ASSERT(s_Context != nullptr, "Renderer context is not initialized");
         RendererContext &ctx = *s_Context;
+        ctx.scene = World::GetActiveScene();
+
+        const EnvironmentSettings environment = World::GetEnvironmentSettings();
+        const VkSampleCountFlagBits desiredMsaa = ResolveMsaaSamples(ctx.deviceWrapper->properties, environment.aaTechnique, environment.msaaSampleCount);
+        if (desiredMsaa != ctx.msaaSamples)
+        {
+            ctx.taaHistoryInitialized = false;
+            RecreateSwapChain();
+            return;
+        }
+
+        if (environment.aaTechnique != AATechnique::TAA)
+        {
+            ctx.taaHistoryInitialized = false;
+        }
 
         uint32_t imageIndex;
         FrameResources &frameResources = ctx.frameResources[ctx.currentFrame];
@@ -447,28 +568,41 @@ namespace Piece
         // vkDeviceWaitIdle is only called when at least one object needs an update.
         {
             bool anyPending = false;
-            auto view = ctx.scene->GetAllEntitiesViewWith<MeshRendererComponent>();
-            for (auto entityHandle : view)
+            const bool environmentChanged = ctx.boundEnvironmentSignature != MakeEnvironmentSignature(environment);
+            if (ctx.scene)
             {
-                const auto &meshRenderer = view.get<MeshRendererComponent>(entityHandle);
-                uint32_t id = static_cast<uint32_t>(entityHandle);
-                bool noDescriptor = ctx.objectMaterialDescriptors.find(id) == ctx.objectMaterialDescriptors.end();
-                MaterialTextures resolvedMaterial = World::ResolveMaterialTextures(meshRenderer.materialId, meshRenderer.materialTextures);
-                bool pathChanged = ctx.objectBoundMaterialSignature[id] != MakeMaterialSignature(resolvedMaterial);
-                if (noDescriptor || pathChanged)
-                {
-                    anyPending = true;
-                    break;
-                }
-            }
-            if (anyPending)
-            {
-                vkDeviceWaitIdle(ctx.device);
+                auto view = ctx.scene->GetAllEntitiesViewWith<MeshRendererComponent>();
                 for (auto entityHandle : view)
                 {
                     const auto &meshRenderer = view.get<MeshRendererComponent>(entityHandle);
-                    EnsureObjectMaterialDescriptor(ctx, static_cast<uint32_t>(entityHandle), meshRenderer.materialId, meshRenderer.materialTextures);
+                    uint32_t id = static_cast<uint32_t>(entityHandle);
+                    bool noDescriptor = ctx.objectMaterialDescriptors.find(id) == ctx.objectMaterialDescriptors.end();
+                    MaterialTextures resolvedMaterial = World::ResolveMaterialTextures(meshRenderer.materialId, meshRenderer.materialTextures);
+                    bool pathChanged = ctx.objectBoundMaterialSignature[id] != MakeMaterialSignature(resolvedMaterial);
+                    if (noDescriptor || pathChanged)
+                    {
+                        anyPending = true;
+                        break;
+                    }
                 }
+
+                if (anyPending || environmentChanged)
+                {
+                    vkDeviceWaitIdle(ctx.device);
+                    for (auto entityHandle : view)
+                    {
+                        const auto &meshRenderer = view.get<MeshRendererComponent>(entityHandle);
+                        EnsureObjectMaterialDescriptor(ctx, static_cast<uint32_t>(entityHandle), meshRenderer.materialId, meshRenderer.materialTextures);
+                    }
+                    EnsureCompositeEnvironmentDescriptors(ctx);
+                    ctx.taaHistoryInitialized = false;
+                }
+            }
+            else if (environmentChanged)
+            {
+                vkDeviceWaitIdle(ctx.device);
+                EnsureCompositeEnvironmentDescriptors(ctx);
+                ctx.taaHistoryInitialized = false;
             }
         }
 
@@ -482,7 +616,7 @@ namespace Piece
             true);
         RecordCommandBuffer(frameInfo);
 
-        result = ctx.swapChainWrapper->submitCommandBuffers(&frameResources.commandBuffer, &imageIndex, frameResources, ctx.imagesInFlight);
+        result = ctx.swapChainWrapper->submitCommandBuffers(&frameResources.commandBuffer, &imageIndex, frameResources, ctx.renderFinishedSemaphores[imageIndex], ctx.imagesInFlight);
 
         if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
         {
@@ -585,7 +719,7 @@ namespace Piece
 
     bool Renderer::CreatePointLightInView()
     {
-        if (!s_Context || !s_Context->scene)
+        if (!s_Context)
         {
             return false;
         }
@@ -593,14 +727,17 @@ namespace Piece
         const glm::vec3 spawnCenter = s_Context->camera
                                           ? s_Context->camera->focalPoint()
                                           : glm::vec3(0.0f);
-        Entity pointLight = s_Context->scene->CreatePointLight();
-        PointLightSettings defaults = BuildDefaultPointLight(spawnCenter, 0);
-        auto &transform = pointLight.GetComponent<TransformComponent>();
-        auto &light = pointLight.GetComponent<PointLightComponent>();
-        transform.position = defaults.position;
-        light.radius = defaults.radius;
-        light.color = defaults.color;
-        light.intensity = defaults.intensity;
+
+        LightingSettings lighting = World::GetLightingSettings();
+        if (lighting.pointLightCount >= 4) {
+            return false;
+        }
+
+        const uint32_t newLightIndex = lighting.pointLightCount;
+        PointLightSettings defaults = BuildDefaultPointLight(spawnCenter, newLightIndex);
+        lighting.pointLights[newLightIndex] = defaults;
+        lighting.pointLightCount = newLightIndex + 1;
+        World::SetLightingSettings(lighting);
         return true;
     }
 
@@ -704,11 +841,6 @@ namespace Piece
                 result = vkCreateSemaphore(ctx.device, &semaphoreInfo, nullptr, &ctx.frameResources[i].imageAvailableSemaphore);
                 PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create image-available semaphore");
             }
-            if (ctx.frameResources[i].renderFinishedSemaphore == VK_NULL_HANDLE)
-            {
-                result = vkCreateSemaphore(ctx.device, &semaphoreInfo, nullptr, &ctx.frameResources[i].renderFinishedSemaphore);
-                PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create render-finished semaphore");
-            }
             if (ctx.frameResources[i].inFlightFence == VK_NULL_HANDLE)
             {
                 result = vkCreateFence(ctx.device, &fenceInfo, nullptr, &ctx.frameResources[i].inFlightFence);
@@ -723,6 +855,19 @@ namespace Piece
                 ctx.geometryPipeline.get(),
                 true);
             RecordCommandBuffer(frameInfo);
+        }
+
+        // Render-finished semaphores are per swapchain image (not per frame-in-flight) to prevent
+        // reuse while the presentation engine still holds a reference to a previous use.
+        const size_t imageCount = ctx.swapChainWrapper->imageCount();
+        ctx.renderFinishedSemaphores.resize(imageCount, VK_NULL_HANDLE);
+        for (size_t i = 0; i < imageCount; i++)
+        {
+            if (ctx.renderFinishedSemaphores[i] == VK_NULL_HANDLE)
+            {
+                result = vkCreateSemaphore(ctx.device, &semaphoreInfo, nullptr, &ctx.renderFinishedSemaphores[i]);
+                PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create render-finished semaphore");
+            }
         }
     }
 
@@ -753,6 +898,17 @@ namespace Piece
                 frame.commandBuffer = VK_NULL_HANDLE;
             }
         }
+
+        // Destroy per-swapchain-image render-finished semaphores.
+        for (VkSemaphore &sem : ctx.renderFinishedSemaphores)
+        {
+            if (sem != VK_NULL_HANDLE)
+            {
+                vkDestroySemaphore(ctx.device, sem, nullptr);
+                sem = VK_NULL_HANDLE;
+            }
+        }
+        ctx.renderFinishedSemaphores.clear();
     }
 
     void Renderer::RecreateSwapChain()
@@ -765,19 +921,23 @@ namespace Piece
 
         ctx.geometryPipeline.reset();
         ctx.lightingPipeline.reset();
+        ctx.presentPipeline.reset();
+        ctx.taaPipeline.reset();
+        ctx.fxaaPipeline.reset();
         RendererInternals::DestroyPipelineLayouts(ctx);
         RendererInternals::DestroyCompositeResources(ctx);
         RendererInternals::DestroyOffscreenResources(ctx);
+        RendererInternals::DestroyLightingRenderPass(ctx);
         RendererInternals::DestroyGeometryRenderPass(ctx);
 
         ctx.swapChainWrapper.reset();
 
         VkExtent2D extent = GetValidSwapChainExtent(ctx.window);
-        ctx.swapChainWrapper = std::make_unique<SwapChain>(*ctx.deviceWrapper, extent);
+        ctx.swapChainWrapper = CreateScope<SwapChain>(*ctx.deviceWrapper, extent);
 
         ctx.swapChainImageFormat = ctx.swapChainWrapper->getSwapChainImageFormat();
         ctx.swapChainExtent = ctx.swapChainWrapper->getSwapChainExtent();
-        ctx.lightingRenderPass = ctx.swapChainWrapper->getRenderPass();
+        ctx.presentRenderPass = ctx.swapChainWrapper->getRenderPass();
         ctx.offscreenWorldPosRoughnessFormat = ctx.deviceWrapper->findSupportedFormat(
             {VK_FORMAT_R16G16B16A16_SFLOAT, VK_FORMAT_R32G32B32A32_SFLOAT},
             VK_IMAGE_TILING_OPTIMAL,
@@ -786,21 +946,27 @@ namespace Piece
             {VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_B8G8R8A8_UNORM},
             VK_IMAGE_TILING_OPTIMAL,
             VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
+        ctx.offscreenLightingColorFormat = ctx.offscreenWorldPosRoughnessFormat;
         ctx.imagesInFlight.assign(ctx.swapChainWrapper->imageCount(), VK_NULL_HANDLE);
         ctx.objectBoundMaterialSignature.clear();
+        ctx.boundEnvironmentSignature.clear();
         if (ctx.scene)
         {
             ctx.scene->OnViewportResize(extent.width, extent.height);
         }
 
-        ctx.msaaSamples = ChooseMsaaSamples(ctx.deviceWrapper->properties);
+        const EnvironmentSettings environment = World::GetEnvironmentSettings();
+        ctx.msaaSamples = ChooseMsaaSamples(ctx.deviceWrapper->properties, environment.aaTechnique, environment.msaaSampleCount);
+        ctx.taaHistoryInitialized = false;
 
         RendererInternals::CreateGeometryRenderPass(ctx);
+    RendererInternals::CreateLightingRenderPass(ctx);
         RendererInternals::CreateOffscreenResources(ctx);
         RendererInternals::CreateCompositeResources(ctx);
+        EnsureCompositeEnvironmentDescriptors(ctx);
 
         VkPushConstantRange pushConstantRange{};
-        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+        pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
         pushConstantRange.offset = 0;
         pushConstantRange.size = sizeof(ScenePushConstants);
 
@@ -825,6 +991,14 @@ namespace Piece
         lightingLayoutInfo.pSetLayouts = lightingSetLayouts.data();
         result = vkCreatePipelineLayout(ctx.device, &lightingLayoutInfo, nullptr, &ctx.lightingPipelineLayout);
         PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to recreate lighting pipeline layout");
+
+        VkPipelineLayoutCreateInfo fxaaLayoutInfo{};
+        fxaaLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        VkDescriptorSetLayout fxaaSetLayout = ctx.fxaaSetLayout->getDescriptorSetLayout();
+        fxaaLayoutInfo.setLayoutCount = 1;
+        fxaaLayoutInfo.pSetLayouts = &fxaaSetLayout;
+        result = vkCreatePipelineLayout(ctx.device, &fxaaLayoutInfo, nullptr, &ctx.fxaaPipelineLayout);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to recreate FXAA pipeline layout");
 
         RendererInternals::CreateGraphicsPipeline(ctx);
         CreateCommandBuffers();

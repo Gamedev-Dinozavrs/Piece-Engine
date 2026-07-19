@@ -28,6 +28,6 @@
 
 // #include "src/debug/Instrumentor.h" // TODO:
 
-#ifdef PIECE_PLATFORM_WINDOWS
+#ifdef PLATFORM_WINDOWS
 	#include <Windows.h>
 #endif

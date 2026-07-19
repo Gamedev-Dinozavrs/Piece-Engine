@@ -12,6 +12,7 @@ struct Vertex {
     glm::vec3 position;
     glm::vec3 color;
     glm::vec2 uv;
+    glm::vec3 normal;
 };
 
 class Mesh {
@@ -24,8 +25,8 @@ public:
 
 private:
     Device& device_;
-    std::unique_ptr<Piece::Buffer> vertexBuffer_;
-    std::unique_ptr<Piece::Buffer> indexBuffer_;
+    Scope<Buffer> vertexBuffer_;
+    Scope<Buffer> indexBuffer_;
     uint32_t indexCount_{0};
 };
 

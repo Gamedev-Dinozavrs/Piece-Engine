@@ -13,7 +13,7 @@ SwapChain::SwapChain(Device& deviceRef, VkExtent2D extent)
     init();
 }
 
-SwapChain::SwapChain(Device& deviceRef, VkExtent2D extent, std::shared_ptr<SwapChain> previous)
+SwapChain::SwapChain(Device& deviceRef, VkExtent2D extent, Ref<SwapChain> previous)
     : device{ deviceRef }, windowExtent{ extent }, oldSwapChain{ previous } {
     init();
     oldSwapChain = nullptr;
@@ -22,7 +22,7 @@ SwapChain::SwapChain(Device& deviceRef, VkExtent2D extent, std::shared_ptr<SwapC
 void SwapChain::init() {
     createSwapChain();
     createImageViews();
-    m_renderPass = std::make_unique<RenderPass>(device, *this);
+    m_renderPass = CreateScope<RenderPass>(device, *this);
     createDepthResources();
     createFramebuffers();
 }
@@ -68,7 +68,7 @@ VkResult SwapChain::acquireNextImage(uint32_t* imageIndex, const FrameResources&
     return result;
 }
 
-VkResult SwapChain::submitCommandBuffers(const VkCommandBuffer* buffers, uint32_t* imageIndex, const FrameResources& frameResources, std::vector<VkFence>& imagesInFlight) {
+VkResult SwapChain::submitCommandBuffers(const VkCommandBuffer* buffers, uint32_t* imageIndex, const FrameResources& frameResources, VkSemaphore renderFinishedSemaphore, std::vector<VkFence>& imagesInFlight) {
     if (imagesInFlight[*imageIndex] != VK_NULL_HANDLE) {
         vkWaitForFences(device.device(), 1, &imagesInFlight[*imageIndex], VK_TRUE, UINT64_MAX);
     }
@@ -86,7 +86,7 @@ VkResult SwapChain::submitCommandBuffers(const VkCommandBuffer* buffers, uint32_
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = buffers;
 
-    VkSemaphore signalSemaphores[] = { frameResources.renderFinishedSemaphore };
+    VkSemaphore signalSemaphores[] = { renderFinishedSemaphore };
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
@@ -133,7 +133,7 @@ void SwapChain::createSwapChain() {
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
     createInfo.imageExtent = extent;
     createInfo.imageArrayLayers = 1;
-    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
 
     Piece::QueueFamilyIndices indices = device.findPhysicalQueueFamilies();
     uint32_t queueFamilyIndices[] = { indices.graphicsFamily, indices.presentFamily };

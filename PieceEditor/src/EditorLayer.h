@@ -1,5 +1,8 @@
 #pragma once
 
+#include "ContentBrowserPanel.h"
+#include "SceneHierarchyPanel.h"
+
 #include <layer/Layer.h>
 
 namespace Piece {
@@ -17,6 +20,8 @@ public:
 
 private:
     bool m_ShowMetrics = false;
+    ContentBrowserPanel m_ContentBrowserPanel;
+    SceneHierarchyPanel m_SceneHierarchyPanel;
 };
 
 } // namespace Piece

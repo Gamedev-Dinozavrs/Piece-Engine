@@ -13,12 +13,20 @@ namespace Piece {
 
 class Scene;
 
+enum class AATechnique {
+    Off = 0,
+    FXAA = 1,
+    MSAA = 2,
+    TAA = 3
+};
+
 enum class TextureSlot {
     Albedo = 0,
     Normal,
     Height,
     Roughness,
-    AmbientOcclusion
+    AmbientOcclusion,
+    Emissive
 };
 
 struct QuadMaterialView {
@@ -28,6 +36,7 @@ struct QuadMaterialView {
     std::string heightPath;
     std::string roughnessPath;
     std::string ambientOcclusionPath;
+    std::string emissivePath;
 };
 
 struct PointLightSettings {
@@ -47,6 +56,17 @@ struct LightingSettings {
     float specularShininessMax{128.0f};
     uint32_t pointLightCount{0};
     std::array<PointLightSettings, 4> pointLights{};
+};
+
+struct EnvironmentSettings {
+    bool enabled{false};
+    std::string diffuseMapPath;
+    std::string specularMapPath;
+    float intensity{1.0f};
+    float diffuseStrength{1.0f};
+    float specularStrength{1.0f};
+    AATechnique aaTechnique{AATechnique::FXAA};
+    uint32_t msaaSampleCount{4};
 };
 
 struct SpawnTransform {
@@ -78,6 +98,10 @@ uint32_t SpawnPrimitive(PrimitiveType primitiveType, const SpawnTransform& trans
 uint32_t SpawnQuad(const SpawnTransform& transform);
 uint32_t SpawnCube(const SpawnTransform& transform);
 uint32_t SpawnSphere(const SpawnTransform& transform);
+uint32_t SpawnMesh(const Ref<Mesh>& mesh, const SpawnTransform& transform, const std::string& name = "Imported Mesh", bool hasVertexNormals = true);
+uint32_t CreateEmptyObject(const std::string& name = "Empty Object");
+bool SetEntityParent(uint32_t childEntityId, uint32_t parentEntityId);
+bool DestroyEntity(uint32_t entityId);
 
 std::vector<RenderEntityView> GetRenderEntities();
 bool SetEntityTransform(uint32_t entityId, const SpawnTransform& transform);
@@ -90,6 +114,11 @@ MaterialTextures ResolveMaterialTextures(uint32_t materialId, const MaterialText
 
 LightingSettings GetLightingSettings();
 void SetLightingSettings(const LightingSettings& settings);
+EnvironmentSettings GetEnvironmentSettings();
+void SetEnvironmentSettings(const EnvironmentSettings& settings);
+
+// Destroys all entities and resets materials and lighting to defaults.
+void ClearScene();
 
 } // namespace World
 

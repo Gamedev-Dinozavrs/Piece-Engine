@@ -1,25 +1,21 @@
 struct MaterialSample {
     vec4 albedo;
+    vec3 normal;
+    float metallic;
     float roughness;
     float ao;
+    vec3 emissive;
 };
 
 MaterialSample SampleMaterial(vec2 uv) {
     MaterialSample material;
     material.albedo = texture(u_Albedo, uv);
-    material.roughness = texture(u_Roughness, uv).r;
+    material.normal = texture(u_Normal, uv).rgb;
+    vec4 metallicRoughness = texture(u_Roughness, uv);
+    // glTF metallicRoughness uses G=roughness and B=metallic. Grayscale roughness maps still work via R fallback.
+    material.roughness = max(metallicRoughness.g, metallicRoughness.r);
+    material.metallic = metallicRoughness.b;
     material.ao = texture(u_AO, uv).r;
+    material.emissive = texture(u_Emissive, uv).rgb;
     return material;
-}
-
-vec3 ComputeSurfaceNormal(vec3 worldPos, vec3 viewDir) {
-    vec3 dx = dFdx(worldPos);
-    vec3 dy = dFdy(worldPos);
-    vec3 normal = normalize(cross(dx, dy));
-
-    if (dot(normal, viewDir) < 0.0) {
-        normal = -normal;
-    }
-
-    return normal;
 }

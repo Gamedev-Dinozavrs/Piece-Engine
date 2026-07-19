@@ -10,9 +10,16 @@
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/quaternion.hpp>
 
+#include <cstdint>
+#include <vector>
 #include <string>
 
 namespace Piece {
+
+enum class NormalSource : uint8_t {
+    Derivative = 0,
+    Vertex
+};
 
 struct TagComponent {
     std::string tag{"Entity"};
@@ -22,6 +29,23 @@ struct TagComponent {
     TagComponent(const TagComponent&) = default;
     TagComponent(const std::string& tagValue) : tag(tagValue) {}
     TagComponent(const std::string& tagValue, UUID uuidValue) : tag(tagValue), id(uuidValue) {}
+};
+
+struct HierarchyComponent {
+    UUID parent{0};
+    std::vector<UUID> children;
+};
+
+enum class ImportGroupMode : uint8_t {
+    PreserveGroups = 0,
+    GroupByMaterial,
+    MergeAll
+};
+
+struct ImportedModelComponent {
+    std::string sourcePath;
+    ImportGroupMode mode{ImportGroupMode::PreserveGroups};
+    bool grouped{true};
 };
 
 struct TransformComponent {
@@ -44,12 +68,15 @@ struct TransformComponent {
 
 struct MeshRendererComponent {
     PrimitiveType primitiveType{PrimitiveType::Unknown};
+    NormalSource normalSource{NormalSource::Derivative};
+    Ref<Mesh> mesh{};
     uint32_t materialId{0};
     MaterialTextures materialTextures{};
 
     MeshRendererComponent() = default;
     MeshRendererComponent(const MeshRendererComponent&) = default;
-    MeshRendererComponent(PrimitiveType primitive) : primitiveType(primitive) {}
+    MeshRendererComponent(PrimitiveType primitive, NormalSource source = NormalSource::Derivative)
+        : primitiveType(primitive), normalSource(source) {}
 };
 
 struct DirectionalLightComponent {

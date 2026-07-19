@@ -7,7 +7,7 @@ namespace Piece {
 
 namespace LightingPass {
 
-void Record(const RendererContext& ctx, const FrameInfo& frameInfo);
+void Record(RendererContext& ctx, const FrameInfo& frameInfo);
 
 } // namespace LightingPass
 

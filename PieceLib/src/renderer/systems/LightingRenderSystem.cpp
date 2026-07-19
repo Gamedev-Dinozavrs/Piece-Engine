@@ -26,12 +26,38 @@ struct PointLightUbo {
 
 struct LightingUbo {
 	glm::vec4 cameraPosition{0.0f, 0.0f, 3.0f, 0.0f};
+	glm::mat4 invViewProj{1.0f};
 	glm::vec4 dirLightDirection{-0.4f, -1.0f, -0.2f, 0.0f};
 	glm::vec4 dirLightColorIntensity{1.0f, 0.98f, 0.9f, 1.2f};
 	PointLightUbo pointLights[kMaxPointLights]{};
 	glm::ivec4 pointLightCount{0, 0, 0, 0};
 	glm::vec4 specularParams{1.0f, 8.0f, 128.0f, 0.0f};
+	glm::vec4 iblParams{0.0f, 1.0f, 1.0f, 8.0f};
 };
+
+float Halton(uint32_t index, uint32_t base) {
+	float result = 0.0f;
+	float f = 1.0f;
+	uint32_t current = index;
+	while (current > 0) {
+		f /= static_cast<float>(base);
+		result += f * static_cast<float>(current % base);
+		current /= base;
+	}
+	return result;
+}
+
+glm::vec2 GetTaaJitter(const RendererContext& ctx) {
+	if (World::GetEnvironmentSettings().aaTechnique != AATechnique::TAA || ctx.swapChainExtent.width == 0 || ctx.swapChainExtent.height == 0) {
+		return glm::vec2(0.0f);
+	}
+
+	const uint32_t sampleIndex = static_cast<uint32_t>(ctx.currentFrame % 8u) + 1u;
+	glm::vec2 jitter{
+		Halton(sampleIndex, 2u) - 0.5f,
+		Halton(sampleIndex, 3u) - 0.5f};
+	return jitter / glm::vec2(static_cast<float>(ctx.swapChainExtent.width), static_cast<float>(ctx.swapChainExtent.height));
+}
 
 LightingUbo BuildLightingUbo(const RendererContext& ctx) {
 	LightingUbo ubo{};
@@ -39,6 +65,12 @@ LightingUbo BuildLightingUbo(const RendererContext& ctx) {
 
 	if (ctx.camera) {
 		ubo.cameraPosition = glm::vec4(ctx.camera->position(), 0.0f);
+		const glm::mat4 view = ctx.camera->view();
+		glm::mat4 proj = ctx.camera->projection();
+		const glm::vec2 jitter = GetTaaJitter(ctx);
+		proj[2][0] += jitter.x * 2.0f;
+		proj[2][1] += jitter.y * 2.0f;
+		ubo.invViewProj = glm::inverse(proj * view);
 	}
 
 	ubo.dirLightDirection = glm::vec4(lighting.directionalDirection, 0.0f);
@@ -57,6 +89,13 @@ LightingUbo BuildLightingUbo(const RendererContext& ctx) {
 	float minShininess = std::max(1.0f, lighting.specularShininessMin);
 	float maxShininess = std::max(minShininess, lighting.specularShininessMax);
 	ubo.specularParams = glm::vec4(lighting.specularStrength, minShininess, maxShininess, 0.0f);
+
+	EnvironmentSettings environment = World::GetEnvironmentSettings();
+	ubo.iblParams = glm::vec4(
+		environment.enabled ? environment.intensity : 0.0f,
+		environment.diffuseStrength,
+		environment.specularStrength,
+		8.0f);
 
 	return ubo;
 }
@@ -80,7 +119,7 @@ void Initialize(RendererContext& ctx) {
 	ctx.globalDescriptorSets.resize(SwapChain::MAX_FRAMES_IN_FLIGHT, VK_NULL_HANDLE);
 
 	for (size_t i = 0; i < SwapChain::MAX_FRAMES_IN_FLIGHT; i++) {
-		ctx.globalUboBuffers[i] = std::make_unique<Buffer>(
+		ctx.globalUboBuffers[i] = CreateScope<Buffer>(
 			*ctx.deviceWrapper,
 			sizeof(LightingUbo),
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
@@ -148,6 +187,41 @@ void RecordComposite(
 		0,
 		static_cast<uint32_t>(descriptorSets.size()),
 		descriptorSets.data(),
+		0,
+		nullptr);
+
+	vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+}
+
+void RecordFXAA(
+	VkCommandBuffer commandBuffer,
+	VkExtent2D extent,
+	Pipeline& pipeline,
+	VkPipelineLayout pipelineLayout,
+	VkDescriptorSet fxaaDescriptorSet) {
+	pipeline.bind(commandBuffer);
+
+	VkViewport viewport{};
+	viewport.x = 0.0f;
+	viewport.y = 0.0f;
+	viewport.width = static_cast<float>(extent.width);
+	viewport.height = static_cast<float>(extent.height);
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+	VkRect2D scissor{};
+	scissor.offset = {0, 0};
+	scissor.extent = extent;
+	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+	vkCmdBindDescriptorSets(
+		commandBuffer,
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		pipelineLayout,
+		0,
+		1,
+		&fxaaDescriptorSet,
 		0,
 		nullptr);
 

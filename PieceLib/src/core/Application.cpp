@@ -1,8 +1,10 @@
 #include <PiecePCH.h>
 #include <core/Application.h>
+#include <core/BackgroundService.h>
 #include <core/Input.h>
 #include <GUI/ImGuiLayer.h>
 #include <renderer/Renderer.h>
+#include <scene/World.h>
 #include <window/PieceWindowGLFW.h>
 
 namespace Piece {
@@ -13,6 +15,7 @@ namespace Piece {
 
         PIECE_CORE_ASSERT(!s_Instance, "Application already exist!");
         s_Instance = this;
+        BackgroundService::Init();
 
         /*
         *  In future if we need more than 1 window framework we include it's implementation here and use it as we need!
@@ -32,8 +35,10 @@ namespace Piece {
     }
 
     Application::~Application() {
+        BackgroundService::Shutdown();
         Renderer::SetSwapChainRecreatedCallback({});
         Renderer::WaitIdle();
+        World::ClearScene();
         m_LayerStack.Clear();
         m_ImGuiLayer = nullptr;
         Renderer::Shutdown();
@@ -43,6 +48,7 @@ namespace Piece {
         m_IsRunning = true;
 
         while (m_IsRunning) {
+            BackgroundService::FlushMainThreadCallbacks();
 
             float time = (float)glfwGetTime(); // platform dependent
             Timestep timestep = time - m_LastFrameTime;

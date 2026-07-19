@@ -27,7 +27,7 @@ Texture::Texture(Device& device, const std::string& filepath)
     mipLevels_ = static_cast<uint32_t>(std::floor(std::log2(std::max(width_, height_)))) + 1;
 
     // staging buffer
-    auto staging = std::make_unique<Buffer>(device_, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    auto staging = CreateScope<Buffer>(device_, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     staging->map();
     staging->write(pixels, imageSize, 0);
     staging->flush(imageSize, 0);
