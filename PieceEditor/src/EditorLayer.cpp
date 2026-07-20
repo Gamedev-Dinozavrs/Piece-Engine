@@ -1,6 +1,9 @@
 #include "EditorLayer.h"
 
 #include "imgui.h"
+#include <core/Input.h>
+#include <core/KeyCodes.h>
+#include <event/Event.h>
 #include <scene/World.h>
 
 namespace Piece {
@@ -24,10 +27,36 @@ void EditorLayer::OnUpdate(Timestep ts) {
 }
 
 void EditorLayer::OnEvent(Event& event) {
-    (void)event;
+    EventDispatcher dispatcher(event);
+    dispatcher.Dispatch<KeyPressedEvent>(PIECE_BIND_EVENT_FUNC(EditorLayer::OnKeyPressed));
+}
+
+bool EditorLayer::OnKeyPressed(KeyPressedEvent& event) {
+    if (event.getRepeatCount() > 0) {
+        return false;
+    }
+
+    const KeyCode key = ToKeyCode(event.getKeyCode());
+    const bool altPressed = Input::IsKeyPressed(KeyCode::LeftAlt) || Input::IsKeyPressed(KeyCode::RightAlt);
+
+    if (altPressed && key == KeyCode::Enter) {
+        m_ReviewMode = !m_ReviewMode;
+        return true;
+    }
+
+    if (m_ReviewMode && key == KeyCode::Escape) {
+        m_ReviewMode = false;
+        return true;
+    }
+
+    return false;
 }
 
 void EditorLayer::OnImGuiRender() {
+    if (m_ReviewMode) {
+        return;
+    }
+
     m_SceneHierarchyPanel.SetContext(World::GetActiveScene());
 
     static bool dockspaceOpen = true;
@@ -68,6 +97,10 @@ void EditorLayer::OnImGuiRender() {
     if (ImGui::BeginMenuBar()) {
         if (ImGui::BeginMenu("View")) {
             ImGui::MenuItem("Metrics", nullptr, &m_ShowMetrics);
+            const bool reviewModePreview = m_ReviewMode;
+            if (ImGui::MenuItem("Review Mode (Alt+Enter)", nullptr, reviewModePreview)) {
+                m_ReviewMode = !m_ReviewMode;
+            }
             ImGui::EndMenu();
         }
         ImGui::EndMenuBar();

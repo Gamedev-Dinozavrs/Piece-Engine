@@ -23,7 +23,6 @@ public:
 
 private:
     void DrawAssetToolbar();
-    void DrawMaterialTools();
     void DrawUploadedTemplates();
     void UploadModelTemplate();
     void SpawnUploadedTemplate(size_t index);
@@ -41,7 +40,6 @@ private:
     int m_SelectedUploadedTemplate = -1;
     int m_RenameTemplateIndex = -1;
     char m_RenameBuffer[128] = {};
-    char m_NewMaterialName[128] = "Material";
 };
 
 } // namespace Piece

@@ -393,7 +393,7 @@ namespace Piece
                                          .build();
 
         RendererInternals::CreateGeometryRenderPass(ctx);
-    RendererInternals::CreateLightingRenderPass(ctx);
+        RendererInternals::CreateLightingRenderPass(ctx);
         RendererInternals::CreateOffscreenResources(ctx);
         RendererInternals::CreateCompositeResources(ctx);
         EnsureCompositeEnvironmentDescriptors(ctx);
@@ -564,8 +564,7 @@ namespace Piece
 
         LightingRenderSystem::UpdatePerFrame(ctx, static_cast<uint32_t>(ctx.currentFrame));
 
-        // Update material descriptors outside command buffer recording.
-        // vkDeviceWaitIdle is only called when at least one object needs an update.
+        // Update material descriptors if needed
         {
             bool anyPending = false;
             const bool environmentChanged = ctx.boundEnvironmentSignature != MakeEnvironmentSignature(environment);

@@ -14,6 +14,7 @@ layout(location = 4) flat out int fragMaterialFlags;
 layout(push_constant) uniform PushConstants {
     mat4 mvp;
     mat4 model;
+    vec4 materialFactors;
     ivec4 materialData;
 } pushConstants;
 

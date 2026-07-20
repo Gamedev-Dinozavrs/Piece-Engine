@@ -12,6 +12,13 @@ layout(set = 0, binding = 2) uniform sampler2D u_Roughness;
 layout(set = 0, binding = 3) uniform sampler2D u_AO;
 layout(set = 0, binding = 4) uniform sampler2D u_Emissive;
 
+layout(push_constant) uniform PushConstants {
+    mat4 mvp;
+    mat4 model;
+    vec4 materialFactors;
+    ivec4 materialData;
+} pushConstants;
+
 #include "material_model.glsl"
 
 layout(location = 0) out vec4 outWorldPosRoughness;
@@ -64,6 +71,9 @@ vec3 ComputeGeometryNormal(vec3 worldPos) {
 
 void main() {
     MaterialSample material = SampleMaterial(fragUV);
+    material.roughness = clamp(material.roughness * pushConstants.materialFactors.x, 0.0, 1.0);
+    material.metallic = clamp(material.metallic * pushConstants.materialFactors.y, 0.0, 1.0);
+
     vec3 normal = ComputeGeometryNormal(fragWorldPos);
     if (fragNormalSource == 1) {
         normal = normalize(fragWorldNormal);

@@ -79,6 +79,15 @@ struct MeshRendererComponent {
         : primitiveType(primitive), normalSource(source) {}
 };
 
+struct MaterialComponent {
+    uint32_t materialId{0};
+
+    MaterialComponent() = default;
+    MaterialComponent(const MaterialComponent&) = default;
+    explicit MaterialComponent(uint32_t id)
+        : materialId(id) {}
+};
+
 struct DirectionalLightComponent {
     glm::vec3 direction{-0.4f, -1.0f, -0.2f};
     glm::vec3 color{1.0f, 1.0f, 1.0f};

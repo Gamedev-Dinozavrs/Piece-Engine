@@ -75,10 +75,16 @@ struct SpawnTransform {
     glm::vec3 scale{1.0f, 1.0f, 1.0f};
 };
 
+struct MaterialSurfaceFactors {
+    float roughnessFactor{1.0f};
+    float metallicFactor{1.0f};
+};
+
 struct MaterialView {
     uint32_t id{0};
     std::string name;
     MaterialTextures textures{};
+    MaterialSurfaceFactors surfaceFactors{};
 };
 
 struct RenderEntityView {
@@ -110,7 +116,9 @@ bool SetEntityMaterial(uint32_t entityId, uint32_t materialId);
 uint32_t CreateMaterial(const std::string& name = "Material");
 std::vector<MaterialView> GetMaterials();
 bool SetMaterialTexturePath(uint32_t materialId, TextureSlot slot, const std::string& path);
+bool SetMaterialSurfaceFactors(uint32_t materialId, float roughnessFactor, float metallicFactor);
 MaterialTextures ResolveMaterialTextures(uint32_t materialId, const MaterialTextures& fallback = {});
+MaterialSurfaceFactors ResolveMaterialSurfaceFactors(uint32_t materialId, const MaterialSurfaceFactors& fallback = {});
 
 LightingSettings GetLightingSettings();
 void SetLightingSettings(const LightingSettings& settings);

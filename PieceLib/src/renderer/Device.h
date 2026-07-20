@@ -40,17 +40,17 @@ public:
     Device(Device&&) = delete;
     Device& operator=(Device&&) = delete;
 
-    VkCommandPool getCommandPool() const { return commandPool; }
+    VkCommandPool getCommandPool() const { return m_CommandPool; }
     VkDevice device() const { return device_; }
-    VkPhysicalDevice getPhysicalDevice() const { return physicalDevice; }
+    VkPhysicalDevice getPhysicalDevice() const { return m_PhysicalDevice; }
     VkSurfaceKHR surface() const { return m_Surface.surface(); }
     VkQueue graphicsQueue() const { return graphicsQueue_; }
     VkQueue presentQueue() const { return presentQueue_; }
     bool isSampleRateShadingEnabled() const { return sampleRateShadingEnabled_; }
 
-    SwapChainSupportDetails getSwapChainSupport() { return querySwapChainSupport(physicalDevice); }
+    SwapChainSupportDetails getSwapChainSupport() { return querySwapChainSupport(m_PhysicalDevice); }
     uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
-    QueueFamilyIndices findPhysicalQueueFamilies() { return findQueueFamilies(physicalDevice); }
+    QueueFamilyIndices findPhysicalQueueFamilies() { return findQueueFamilies(m_PhysicalDevice); }
     VkFormat findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
     VmaAllocator allocator() const { return allocator_; }
 
@@ -63,7 +63,7 @@ public:
 
     void createImageWithInfo(const VkImageCreateInfo& imageInfo, VkMemoryPropertyFlags properties, VkImage& image, VmaAllocation& allocation);
 
-    VkPhysicalDeviceProperties properties;
+    VkPhysicalDeviceProperties m_PhysicalDeviceProperties;
 
 private:
     void pickPhysicalDevice();
@@ -78,8 +78,8 @@ private:
 
     Surface& m_Surface;
     VulkanContext& m_Context;
-    VkPhysicalDevice physicalDevice{VK_NULL_HANDLE};
-    VkCommandPool commandPool{VK_NULL_HANDLE};
+    VkPhysicalDevice m_PhysicalDevice{VK_NULL_HANDLE};
+    VkCommandPool m_CommandPool{VK_NULL_HANDLE};
     VmaAllocator allocator_{nullptr};
 
     VkDevice device_{VK_NULL_HANDLE};
@@ -87,8 +87,8 @@ private:
     VkQueue presentQueue_{VK_NULL_HANDLE};
     bool sampleRateShadingEnabled_{false};
 
-    const std::vector<const char*> validationLayers = { "VK_LAYER_KHRONOS_validation" };
-    const std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
+    const std::vector<const char*> m_ValidationLayers = { "VK_LAYER_KHRONOS_validation" };
+    const std::vector<const char*> m_DeviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 };
 
 } // namespace Piece

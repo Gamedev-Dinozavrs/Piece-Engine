@@ -99,7 +99,15 @@ void ContentBrowserPanel::OnImGuiRender() {
 
     DrawAssetToolbar();
     DrawUploadedTemplates();
-    DrawMaterialTools();
+
+    if (ImGui::BeginPopupContextWindow("ContentBrowserEmptySpace", ImGuiPopupFlags_NoOpenOverItems)) {
+        if (ImGui::MenuItem("Create Material")) {
+            const uint32_t materialId = World::CreateMaterial("Material");
+            m_StatusMessage = "Created material " + std::to_string(materialId) + ".";
+            m_StatusIsError = false;
+        }
+        ImGui::EndPopup();
+    }
 
     ImGui::End();
 }
@@ -192,80 +200,6 @@ void ContentBrowserPanel::DrawUploadedTemplates() {
     }
 }
 
-void ContentBrowserPanel::DrawMaterialTools() {
-    if (!ImGui::CollapsingHeader("Materials", ImGuiTreeNodeFlags_DefaultOpen)) {
-        return;
-    }
-
-    ImGui::InputText("Material Name", m_NewMaterialName, sizeof(m_NewMaterialName));
-    if (ImGui::Button("Create Material")) {
-        World::CreateMaterial(m_NewMaterialName);
-    }
-
-    const char* imageFilter = "Image Files\0*.png;*.jpg;*.jpeg;*.bmp;*.tga\0All Files\0*.*\0";
-    auto materials = World::GetMaterials();
-    if (materials.empty()) {
-        ImGui::TextDisabled("No materials created");
-        return;
-    }
-
-    for (auto& material : materials) {
-        ImGui::PushID(static_cast<int>(material.id));
-        if (ImGui::TreeNode(material.name.c_str())) {
-            ImGui::Text("Albedo: %s", GetDisplayFileName(material.textures.albedoPath).c_str());
-            if (ImGui::Button("Set Albedo")) {
-                uint32_t matId = material.id;
-                Platform::OpenFileDialogAsync(imageFilter, [matId](std::string path) {
-                    World::SetMaterialTexturePath(matId, TextureSlot::Albedo, path);
-                });
-            }
-
-            ImGui::Text("Normal: %s", GetDisplayFileName(material.textures.normalPath).c_str());
-            if (ImGui::Button("Set Normal")) {
-                uint32_t matId = material.id;
-                Platform::OpenFileDialogAsync(imageFilter, [matId](std::string path) {
-                    World::SetMaterialTexturePath(matId, TextureSlot::Normal, path);
-                });
-            }
-
-            ImGui::Text("Height: %s", GetDisplayFileName(material.textures.heightPath).c_str());
-            if (ImGui::Button("Set Height")) {
-                uint32_t matId = material.id;
-                Platform::OpenFileDialogAsync(imageFilter, [matId](std::string path) {
-                    World::SetMaterialTexturePath(matId, TextureSlot::Height, path);
-                });
-            }
-
-            ImGui::Text("Roughness: %s", GetDisplayFileName(material.textures.roughnessPath).c_str());
-            if (ImGui::Button("Set Roughness")) {
-                uint32_t matId = material.id;
-                Platform::OpenFileDialogAsync(imageFilter, [matId](std::string path) {
-                    World::SetMaterialTexturePath(matId, TextureSlot::Roughness, path);
-                });
-            }
-
-            ImGui::Text("Ambient Occlusion: %s", GetDisplayFileName(material.textures.ambientOcclusionPath).c_str());
-            if (ImGui::Button("Set AO")) {
-                uint32_t matId = material.id;
-                Platform::OpenFileDialogAsync(imageFilter, [matId](std::string path) {
-                    World::SetMaterialTexturePath(matId, TextureSlot::AmbientOcclusion, path);
-                });
-            }
-
-            ImGui::Text("Emissive: %s", GetDisplayFileName(material.textures.emissivePath).c_str());
-            if (ImGui::Button("Set Emissive")) {
-                uint32_t matId = material.id;
-                Platform::OpenFileDialogAsync(imageFilter, [matId](std::string path) {
-                    World::SetMaterialTexturePath(matId, TextureSlot::Emissive, path);
-                });
-            }
-
-            ImGui::TreePop();
-        }
-        ImGui::PopID();
-    }
-}
-
 void ContentBrowserPanel::UploadModelTemplate() {
     const char* modelFilter = "Model Files\0*.obj;*.gltf;*.glb\0All Files\0*.*\0";
     Platform::OpenFileDialogAsync(modelFilter, [this](std::string selectedPath) {
@@ -334,6 +268,7 @@ void ContentBrowserPanel::SpawnUploadedTemplate(size_t index) {
     for (size_t i = 0; i < model.materials.size(); ++i) {
         const ImportedMaterialData& material = model.materials[i];
         const uint32_t materialId = World::CreateMaterial(material.name.empty() ? "Imported Material" : material.name);
+        World::SetMaterialSurfaceFactors(materialId, material.roughnessFactor, material.metallicFactor);
         if (FileExists(material.albedoPath)) {
             World::SetMaterialTexturePath(materialId, TextureSlot::Albedo, material.albedoPath);
         }

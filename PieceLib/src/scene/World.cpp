@@ -22,6 +22,7 @@ struct MaterialRecord {
     uint32_t id{0};
     std::string name;
     MaterialTextures textures{};
+    MaterialSurfaceFactors surfaceFactors{};
 };
 
 Ref<Scene> s_ActiveScene = nullptr;
@@ -31,6 +32,24 @@ float s_SpecularShininessMax = 128.0f;
 EnvironmentSettings s_EnvironmentSettings{};
 uint32_t s_NextMaterialId = 1;
 std::vector<MaterialRecord> s_Materials;
+uint32_t s_DefaultMaterialId = 0;
+
+uint32_t EnsureDefaultMaterialId() {
+    if (s_DefaultMaterialId != 0) {
+        for (const auto& material : s_Materials) {
+            if (material.id == s_DefaultMaterialId) {
+                return s_DefaultMaterialId;
+            }
+        }
+    }
+
+    MaterialRecord material{};
+    material.id = s_NextMaterialId++;
+    material.name = "Default Material";
+    s_Materials.push_back(material);
+    s_DefaultMaterialId = material.id;
+    return s_DefaultMaterialId;
+}
 
 Ref<Scene> EnsureScene() {
     if (!s_ActiveScene) {
@@ -62,7 +81,10 @@ Entity SpawnPrimitiveEntity(Scene& scene, PrimitiveType primitiveType, const std
     }
 
     Entity entity = scene.CreateEntity(name.empty() ? defaultName : name);
-    entity.AddComponent<MeshRendererComponent>(primitiveType, NormalSource::Vertex);
+        const uint32_t defaultMaterialId = EnsureDefaultMaterialId();
+        auto& meshRenderer = entity.AddComponent<MeshRendererComponent>(primitiveType, NormalSource::Vertex);
+        meshRenderer.materialId = defaultMaterialId;
+        entity.AddComponent<MaterialComponent>(defaultMaterialId);
     return entity;
 }
 
@@ -208,6 +230,9 @@ uint32_t SpawnMesh(const Ref<Mesh>& mesh, const SpawnTransform& transform, const
         PrimitiveType::Unknown,
         hasVertexNormals ? NormalSource::Vertex : NormalSource::Derivative);
     renderer.mesh = mesh;
+    const uint32_t defaultMaterialId = EnsureDefaultMaterialId();
+    renderer.materialId = defaultMaterialId;
+    entity.AddComponent<MaterialComponent>(defaultMaterialId);
 
     auto& transformComponent = entity.GetComponent<TransformComponent>();
     transformComponent.position = transform.position;
@@ -298,13 +323,17 @@ std::vector<RenderEntityView> GetRenderEntities() {
     for (auto handle : view) {
         const auto& tag = view.get<TagComponent>(handle);
         const auto& meshRenderer = view.get<MeshRendererComponent>(handle);
-        const auto& transform = Entity{handle, scene.get()}.GetComponent<TransformComponent>();
+        Entity currentEntity{handle, scene.get()};
+        const auto& transform = currentEntity.GetComponent<TransformComponent>();
 
         RenderEntityView entity{};
         entity.id = static_cast<uint32_t>(handle);
         entity.name = tag.tag;
         entity.primitiveType = meshRenderer.primitiveType;
         entity.materialId = meshRenderer.materialId;
+        if (currentEntity.HasComponent<MaterialComponent>()) {
+            entity.materialId = currentEntity.GetComponent<MaterialComponent>().materialId;
+        }
         entity.transform.position = transform.position;
         entity.transform.rotation = transform.rotation;
         entity.transform.scale = transform.scale;
@@ -348,7 +377,14 @@ bool SetEntityMaterial(uint32_t entityId, uint32_t materialId) {
             continue;
         }
 
-        view.get<MeshRendererComponent>(handle).materialId = materialId;
+        auto& meshRenderer = view.get<MeshRendererComponent>(handle);
+        meshRenderer.materialId = materialId;
+        Entity entity{handle, scene.get()};
+        if (entity.HasComponent<MaterialComponent>()) {
+            entity.GetComponent<MaterialComponent>().materialId = materialId;
+        } else {
+            entity.AddComponent<MaterialComponent>(materialId);
+        }
         return true;
     }
 
@@ -371,6 +407,7 @@ std::vector<MaterialView> GetMaterials() {
         view.id = material.id;
         view.name = material.name;
         view.textures = material.textures;
+        view.surfaceFactors = material.surfaceFactors;
         materials.push_back(std::move(view));
     }
     return materials;
@@ -409,10 +446,34 @@ bool SetMaterialTexturePath(uint32_t materialId, TextureSlot slot, const std::st
     return false;
 }
 
+bool SetMaterialSurfaceFactors(uint32_t materialId, float roughnessFactor, float metallicFactor) {
+    for (auto& material : s_Materials) {
+        if (material.id != materialId) {
+            continue;
+        }
+
+        material.surfaceFactors.roughnessFactor = std::clamp(roughnessFactor, 0.0f, 1.0f);
+        material.surfaceFactors.metallicFactor = std::clamp(metallicFactor, 0.0f, 1.0f);
+        return true;
+    }
+
+    return false;
+}
+
 MaterialTextures ResolveMaterialTextures(uint32_t materialId, const MaterialTextures& fallback) {
     for (const auto& material : s_Materials) {
         if (material.id == materialId) {
             return material.textures;
+        }
+    }
+
+    return fallback;
+}
+
+MaterialSurfaceFactors ResolveMaterialSurfaceFactors(uint32_t materialId, const MaterialSurfaceFactors& fallback) {
+    for (const auto& material : s_Materials) {
+        if (material.id == materialId) {
+            return material.surfaceFactors;
         }
     }
 
@@ -534,6 +595,7 @@ void ClearScene() {
     }
     s_Materials.clear();
     s_NextMaterialId = 1;
+    s_DefaultMaterialId = 0;
     s_EnvironmentSettings = EnvironmentSettings{};
 }
 

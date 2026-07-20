@@ -28,16 +28,16 @@ std::atomic<bool>                     s_Running{false};
 std::vector<std::function<void()>>    s_MainCallbacks;
 std::mutex                            s_MainMutex;
 
-} // namespace
+}
 
 void BackgroundService::Init() {
     s_Running = true;
     s_Thread = std::thread([]() {
-        PIECE_CORE_TRACE("BackgroundService: worker thread started");
+        PIECE_CORE_TRACE("BackgroundService: Worker thread started");
         while (true) {
             std::function<void()> task;
             {
-                std::unique_lock<std::mutex> lock(s_TaskMutex);
+                Scope<std::mutex> lock(s_TaskMutex);
                 s_TaskCV.wait(lock, [] { return !s_TaskQueue.empty() || !s_Running.load(); });
                 if (!s_Running.load() && s_TaskQueue.empty()) {
                     break;

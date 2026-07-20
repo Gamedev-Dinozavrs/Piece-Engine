@@ -621,6 +621,8 @@ bool AssetImporter::ImportGLTF(const std::string& path, ImportedModelData& outMo
         imported.roughnessPath = ResolveGltfTexturePath(asset, sourceDir, material.pbrData.metallicRoughnessTexture);
         imported.ambientOcclusionPath = ResolveGltfTexturePath(asset, sourceDir, material.occlusionTexture);
         imported.emissivePath = ResolveGltfTexturePath(asset, sourceDir, material.emissiveTexture);
+        imported.roughnessFactor = std::clamp(static_cast<float>(material.pbrData.roughnessFactor), 0.0f, 1.0f);
+        imported.metallicFactor = std::clamp(static_cast<float>(material.pbrData.metallicFactor), 0.0f, 1.0f);
         outModel.materials.push_back(std::move(imported));
     }
 

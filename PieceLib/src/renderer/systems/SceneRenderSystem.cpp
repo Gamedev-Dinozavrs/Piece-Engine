@@ -130,6 +130,13 @@ void Record(const RendererContext& ctx, const FrameInfo& frameInfo) {
 		ScenePushConstants push{};
 		push.mvp = proj * view * model;
 		push.model = model;
+		uint32_t materialId = meshRenderer.materialId;
+		if (entity.HasComponent<MaterialComponent>()) {
+			materialId = entity.GetComponent<MaterialComponent>().materialId;
+		}
+		const MaterialSurfaceFactors materialFactors = World::ResolveMaterialSurfaceFactors(materialId);
+		push.materialFactors.x = materialFactors.roughnessFactor;
+		push.materialFactors.y = materialFactors.metallicFactor;
 		push.materialData.x = (meshRenderer.normalSource == NormalSource::Vertex) ? 1 : 0;
 		auto flagsIt = ctx.objectMaterialFlags.find(static_cast<uint32_t>(entityHandle));
 		push.materialData.y = (flagsIt != ctx.objectMaterialFlags.end()) ? static_cast<int>(flagsIt->second) : 0;

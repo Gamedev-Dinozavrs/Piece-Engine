@@ -18,7 +18,7 @@ Device::Device(Surface& surface, VulkanContext& context)
     createCommandPool();
 
     VmaAllocatorCreateInfo allocatorInfo{};
-    allocatorInfo.physicalDevice = physicalDevice;
+    allocatorInfo.physicalDevice = m_PhysicalDevice;
     allocatorInfo.device = device_;
     allocatorInfo.instance = m_Context.instance();
     allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_0;
@@ -29,8 +29,8 @@ Device::Device(Surface& surface, VulkanContext& context)
 }
 
 Device::~Device() {
-    if (commandPool != VK_NULL_HANDLE) {
-        vkDestroyCommandPool(device_, commandPool, nullptr);
+    if (m_CommandPool != VK_NULL_HANDLE) {
+        vkDestroyCommandPool(device_, m_CommandPool, nullptr);
     }
     if (allocator_ != nullptr) {
         vmaDestroyAllocator(allocator_);
@@ -53,21 +53,21 @@ void Device::pickPhysicalDevice() {
 
     for (const auto& device : devices) {
         if (isDeviceSuitable(device)) {
-            physicalDevice = device;
+            m_PhysicalDevice = device;
             break;
         }
     }
 
-    if (physicalDevice == VK_NULL_HANDLE) {
+    if (m_PhysicalDevice == VK_NULL_HANDLE) {
         throw std::runtime_error("failed to find a suitable GPU!");
     }
 
-    vkGetPhysicalDeviceProperties(physicalDevice, &properties);
-    PIECE_CORE_INFO("Physical device: {}", properties.deviceName);
+    vkGetPhysicalDeviceProperties(m_PhysicalDevice, &m_PhysicalDeviceProperties);
+    PIECE_CORE_INFO("Physical device: {}", m_PhysicalDeviceProperties.deviceName);
 }
 
 void Device::createLogicalDevice() {
-    QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+    QueueFamilyIndices indices = findQueueFamilies(m_PhysicalDevice);
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     std::set<uint32_t> uniqueQueueFamilies = { indices.graphicsFamily, indices.presentFamily };
@@ -83,7 +83,7 @@ void Device::createLogicalDevice() {
     }
 
     VkPhysicalDeviceFeatures supportedFeatures{};
-    vkGetPhysicalDeviceFeatures(physicalDevice, &supportedFeatures);
+    vkGetPhysicalDeviceFeatures(m_PhysicalDevice, &supportedFeatures);
 
     VkPhysicalDeviceFeatures deviceFeatures = {};
     deviceFeatures.samplerAnisotropy = VK_TRUE;
@@ -102,14 +102,14 @@ void Device::createLogicalDevice() {
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
 
     createInfo.pEnabledFeatures = &deviceFeatures;
-    createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
-    createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(m_DeviceExtensions.size());
+    createInfo.ppEnabledExtensionNames = m_DeviceExtensions.data();
 
     // Device layers have been deprecated since Vulkan 1.0.
     // Validation is controlled at the instance level only.
     createInfo.enabledLayerCount = 0;
 
-    if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device_) != VK_SUCCESS) {
+    if (vkCreateDevice(m_PhysicalDevice, &createInfo, nullptr, &device_) != VK_SUCCESS) {
         throw std::runtime_error("failed to create logical device!");
     }
 
@@ -125,7 +125,7 @@ void Device::createCommandPool() {
     poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily;
     poolInfo.flags = VK_COMMAND_POOL_CREATE_TRANSIENT_BIT | VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-    if (vkCreateCommandPool(device_, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
+    if (vkCreateCommandPool(device_, &poolInfo, nullptr, &m_CommandPool) != VK_SUCCESS) {
         throw std::runtime_error("failed to create command pool!");
     }
 }
@@ -156,7 +156,7 @@ bool Device::checkDeviceExtensionSupport(VkPhysicalDevice device) {
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
 
-    std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
+    std::set<std::string> requiredExtensions(m_DeviceExtensions.begin(), m_DeviceExtensions.end());
 
     for (const auto& extension : availableExtensions) {
         requiredExtensions.erase(extension.extensionName);
@@ -221,7 +221,7 @@ SwapChainSupportDetails Device::querySwapChainSupport(VkPhysicalDevice device) {
 VkFormat Device::findSupportedFormat(const std::vector<VkFormat>& candidates, VkImageTiling tiling, VkFormatFeatureFlags features) {
     for (VkFormat format : candidates) {
         VkFormatProperties props;
-        vkGetPhysicalDeviceFormatProperties(physicalDevice, format, &props);
+        vkGetPhysicalDeviceFormatProperties(m_PhysicalDevice, format, &props);
 
         if (tiling == VK_IMAGE_TILING_LINEAR && (props.linearTilingFeatures & features) == features) {
             return format;
@@ -235,7 +235,7 @@ VkFormat Device::findSupportedFormat(const std::vector<VkFormat>& candidates, Vk
 
 uint32_t Device::findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) {
     VkPhysicalDeviceMemoryProperties memProperties;
-    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+    vkGetPhysicalDeviceMemoryProperties(m_PhysicalDevice, &memProperties);
     for (uint32_t i = 0; i < memProperties.memoryTypeCount; i++) {
         if ((typeFilter & (1 << i)) && (memProperties.memoryTypes[i].propertyFlags & properties) == properties) {
             return i;
@@ -270,7 +270,7 @@ VkCommandBuffer Device::beginSingleTimeCommands() {
     VkCommandBufferAllocateInfo allocInfo{};
     allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
     allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandPool = commandPool;
+    allocInfo.commandPool = m_CommandPool;
     allocInfo.commandBufferCount = 1;
 
     VkCommandBuffer commandBuffer;
@@ -295,7 +295,7 @@ void Device::endSingleTimeCommands(VkCommandBuffer commandBuffer) {
     vkQueueSubmit(graphicsQueue_, 1, &submitInfo, VK_NULL_HANDLE);
     vkQueueWaitIdle(graphicsQueue_);
 
-    vkFreeCommandBuffers(device_, commandPool, 1, &commandBuffer);
+    vkFreeCommandBuffers(device_, m_CommandPool, 1, &commandBuffer);
 }
 
 void Device::copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {

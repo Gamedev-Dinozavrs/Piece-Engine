@@ -23,6 +23,8 @@ struct ImportedMaterialData {
     std::string roughnessPath;
     std::string ambientOcclusionPath;
     std::string emissivePath;
+    float roughnessFactor{1.0f};
+    float metallicFactor{1.0f};
 };
 
 struct ImportedModelData {

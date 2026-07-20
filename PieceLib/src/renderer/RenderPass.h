@@ -12,7 +12,6 @@ public:
 	RenderPass(Device& device, SwapChain& swapChain);
 	~RenderPass();
 
-	// Not copyable or movable
 	RenderPass(const RenderPass&) = delete;
 	RenderPass& operator=(const RenderPass&) = delete;
 	RenderPass(RenderPass&&) = delete;
