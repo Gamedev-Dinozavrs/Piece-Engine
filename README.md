@@ -7,6 +7,8 @@ It is currently focused on a clean renderer architecture, scene workflow, and an
 
 The project is in active development.
 Core rendering and editor workflows are working, with several advanced features planned next.
+The engine targets cross-platform support, and most core systems are already platform-agnostic.
+Cross-platform support is currently in progress, with the main remaining gap being OS-specific file open dialog handling.
 
 ## Implemented Features
 
