@@ -37,7 +37,7 @@ void BackgroundService::Init() {
         while (true) {
             std::function<void()> task;
             {
-                Scope<std::mutex> lock(s_TaskMutex);
+                std::unique_lock<std::mutex> lock(s_TaskMutex);
                 s_TaskCV.wait(lock, [] { return !s_TaskQueue.empty() || !s_Running.load(); });
                 if (!s_Running.load() && s_TaskQueue.empty()) {
                     break;

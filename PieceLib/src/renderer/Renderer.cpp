@@ -349,7 +349,7 @@ namespace Piece
         ctx.scene = World::GetActiveScene();
 
         const EnvironmentSettings environment = World::GetEnvironmentSettings();
-        ctx.msaaSamples = ChooseMsaaSamples(ctx.deviceWrapper->properties, environment.aaTechnique, environment.msaaSampleCount);
+        ctx.msaaSamples = ChooseMsaaSamples(ctx.deviceWrapper->m_PhysicalDeviceProperties, environment.aaTechnique, environment.msaaSampleCount);
         ctx.taaHistoryInitialized = false;
 
         // create swapchain wrapper which also creates image views, render pass, framebuffers and sync
@@ -536,7 +536,7 @@ namespace Piece
         ctx.scene = World::GetActiveScene();
 
         const EnvironmentSettings environment = World::GetEnvironmentSettings();
-        const VkSampleCountFlagBits desiredMsaa = ResolveMsaaSamples(ctx.deviceWrapper->properties, environment.aaTechnique, environment.msaaSampleCount);
+        const VkSampleCountFlagBits desiredMsaa = ResolveMsaaSamples(ctx.deviceWrapper->m_PhysicalDeviceProperties, environment.aaTechnique, environment.msaaSampleCount);
         if (desiredMsaa != ctx.msaaSamples)
         {
             ctx.taaHistoryInitialized = false;
@@ -955,7 +955,7 @@ namespace Piece
         }
 
         const EnvironmentSettings environment = World::GetEnvironmentSettings();
-        ctx.msaaSamples = ChooseMsaaSamples(ctx.deviceWrapper->properties, environment.aaTechnique, environment.msaaSampleCount);
+        ctx.msaaSamples = ChooseMsaaSamples(ctx.deviceWrapper->m_PhysicalDeviceProperties, environment.aaTechnique, environment.msaaSampleCount);
         ctx.taaHistoryInitialized = false;
 
         RendererInternals::CreateGeometryRenderPass(ctx);
