@@ -35,30 +35,6 @@ struct LightingUbo {
 	glm::vec4 iblParams{0.0f, 1.0f, 1.0f, 8.0f};
 };
 
-float Halton(uint32_t index, uint32_t base) {
-	float result = 0.0f;
-	float f = 1.0f;
-	uint32_t current = index;
-	while (current > 0) {
-		f /= static_cast<float>(base);
-		result += f * static_cast<float>(current % base);
-		current /= base;
-	}
-	return result;
-}
-
-glm::vec2 GetTaaJitter(const RendererContext& ctx) {
-	if (World::GetEnvironmentSettings().aaTechnique != AATechnique::TAA || ctx.swapChainExtent.width == 0 || ctx.swapChainExtent.height == 0) {
-		return glm::vec2(0.0f);
-	}
-
-	const uint32_t sampleIndex = static_cast<uint32_t>(ctx.currentFrame % 8u) + 1u;
-	glm::vec2 jitter{
-		Halton(sampleIndex, 2u) - 0.5f,
-		Halton(sampleIndex, 3u) - 0.5f};
-	return jitter / glm::vec2(static_cast<float>(ctx.swapChainExtent.width), static_cast<float>(ctx.swapChainExtent.height));
-}
-
 LightingUbo BuildLightingUbo(const RendererContext& ctx) {
 	LightingUbo ubo{};
 	LightingSettings lighting = World::GetLightingSettings();
@@ -67,9 +43,6 @@ LightingUbo BuildLightingUbo(const RendererContext& ctx) {
 		ubo.cameraPosition = glm::vec4(ctx.camera->position(), 0.0f);
 		const glm::mat4 view = ctx.camera->view();
 		glm::mat4 proj = ctx.camera->projection();
-		const glm::vec2 jitter = GetTaaJitter(ctx);
-		proj[2][0] += jitter.x * 2.0f;
-		proj[2][1] += jitter.y * 2.0f;
 		ubo.invViewProj = glm::inverse(proj * view);
 	}
 
@@ -193,12 +166,13 @@ void RecordComposite(
 	vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 }
 
-void RecordFXAA(
+void RecordPresent(
 	VkCommandBuffer commandBuffer,
 	VkExtent2D extent,
 	Pipeline& pipeline,
 	VkPipelineLayout pipelineLayout,
-	VkDescriptorSet fxaaDescriptorSet) {
+	VkDescriptorSet compositeDescriptorSet,
+	VkDescriptorSet globalDescriptorSet) {
 	pipeline.bind(commandBuffer);
 
 	VkViewport viewport{};
@@ -215,13 +189,14 @@ void RecordFXAA(
 	scissor.extent = extent;
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
+	std::array<VkDescriptorSet, 2> descriptorSets = {compositeDescriptorSet, globalDescriptorSet};
 	vkCmdBindDescriptorSets(
 		commandBuffer,
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
 		pipelineLayout,
 		0,
-		1,
-		&fxaaDescriptorSet,
+		static_cast<uint32_t>(descriptorSets.size()),
+		descriptorSets.data(),
 		0,
 		nullptr);
 

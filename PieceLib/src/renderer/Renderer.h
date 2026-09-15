@@ -6,12 +6,14 @@
 #include <glm/glm.hpp>
 #include <cstdint>
 #include <functional>
+#include <core/UUID.h>
 
 namespace Piece {
 
     class Device;
     class RenderPass;
     class VulkanContext;
+    class EditorCamera;
 
     class Renderer {
     public:
@@ -22,6 +24,8 @@ namespace Piece {
         static void Update(Timestep ts);
         static void OnWindowResize(uint32_t width, uint32_t height);
         static bool OnMouseScrolled(MouseScrolledEvent& event);
+        static UUID ReadEntityIdAtPixel(uint32_t x, uint32_t y);
+        static EditorCamera& GetEditorCamera();
 
         static Device& GetDevice();
         static RenderPass& GetRenderPass();

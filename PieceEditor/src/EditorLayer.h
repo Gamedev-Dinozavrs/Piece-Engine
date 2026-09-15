@@ -21,10 +21,12 @@ public:
 
 private:
     bool OnKeyPressed(KeyPressedEvent& event);
+    void DrawTransformGizmo();
 
 private:
     bool m_ShowMetrics = false;
     bool m_ReviewMode = false;
+    int m_GizmoOperation = 0;
     ContentBrowserPanel m_ContentBrowserPanel;
     SceneHierarchyPanel m_SceneHierarchyPanel;
 };

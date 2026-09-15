@@ -13,3 +13,6 @@
 [submodule "Dependencies/fastgltf"]
 	path = Dependencies/fastgltf
 	url = https://github.com/Gamedev-Dinozavrs/fastgltf
+[submodule "Dependencies/ImGuizmo"]
+	path = Dependencies/ImGuizmo
+	url = https://github.com/Gamedev-Dinozavrs/ImGuizmo

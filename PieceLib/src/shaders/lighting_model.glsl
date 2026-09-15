@@ -47,6 +47,15 @@ vec3 F_Schlick(float cosTheta, vec3 F0) {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
+float PointLightAttenuation(float distance, float radius) {
+    radius = max(radius, 0.001);
+
+    // Keep the light finite at its origin while retaining inverse-square behavior.
+    float inverseSquare = 1.0 / max(distance * distance, 1.0);
+    float softCutoff = 1.0 - smoothstep(radius * 0.75, radius, distance);
+    return inverseSquare * softCutoff;
+}
+
 // ----------------------------------------------------------------------------
 // Per-light Cook-Torrance evaluation
 // ----------------------------------------------------------------------------
@@ -104,9 +113,8 @@ vec3 ComputeLighting(vec3 baseColor, vec3 normal, vec3 worldPos, vec3 viewDir, f
     for (int i = 0; i < u_Lighting.pointLightCount.x; ++i) {
         vec3  lightToFrag = worldPos - u_Lighting.pointLights[i].positionRadius.xyz;
         float distance    = length(lightToFrag);
-        float radius      = max(u_Lighting.pointLights[i].positionRadius.w, 0.001);
-        float attenuation = clamp(1.0 - distance / radius, 0.0, 1.0);
-        attenuation *= attenuation;
+        float radius      = u_Lighting.pointLights[i].positionRadius.w;
+        float attenuation = PointLightAttenuation(distance, radius);
 
         if (attenuation <= 0.0) continue;
 
@@ -137,9 +145,8 @@ vec3 ComputeLighting(vec3 baseColor, vec3 normal, vec3 worldPos, vec3 viewDir, f
     for (int i = 0; i < u_Lighting.pointLightCount.x; ++i) {
         vec3  lightToFrag = worldPos - u_Lighting.pointLights[i].positionRadius.xyz;
         float distance    = length(lightToFrag);
-        float radius      = max(u_Lighting.pointLights[i].positionRadius.w, 0.001);
-        float attenuation = clamp(1.0 - distance / radius, 0.0, 1.0);
-        attenuation *= attenuation;
+        float radius      = u_Lighting.pointLights[i].positionRadius.w;
+        float attenuation = PointLightAttenuation(distance, radius);
 
         if (attenuation <= 0.0) continue;
 

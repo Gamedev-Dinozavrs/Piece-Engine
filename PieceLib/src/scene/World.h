@@ -15,9 +15,7 @@ class Scene;
 
 enum class AATechnique {
     Off = 0,
-    FXAA = 1,
-    MSAA = 2,
-    TAA = 3
+    MSAA = 1
 };
 
 enum class TextureSlot {
@@ -65,7 +63,7 @@ struct EnvironmentSettings {
     float intensity{1.0f};
     float diffuseStrength{1.0f};
     float specularStrength{1.0f};
-    AATechnique aaTechnique{AATechnique::FXAA};
+    AATechnique aaTechnique{AATechnique::MSAA};
     uint32_t msaaSampleCount{4};
 };
 

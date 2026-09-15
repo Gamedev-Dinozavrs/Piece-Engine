@@ -68,6 +68,14 @@ struct OffscreenFrameResources {
     VmaAllocation emissiveAllocation{nullptr};
     VkImageView emissiveImageView{VK_NULL_HANDLE};
 
+    VkImage msaaEntityIdImage{VK_NULL_HANDLE};
+    VmaAllocation msaaEntityIdAllocation{nullptr};
+    VkImageView msaaEntityIdImageView{VK_NULL_HANDLE};
+
+    VkImage entityIdImage{VK_NULL_HANDLE};
+    VmaAllocation entityIdAllocation{nullptr};
+    VkImageView entityIdImageView{VK_NULL_HANDLE};
+
     VkImage msaaLightingColorImage{VK_NULL_HANDLE};
     VmaAllocation msaaLightingColorAllocation{nullptr};
     VkImageView msaaLightingColorImageView{VK_NULL_HANDLE};
@@ -90,8 +98,6 @@ struct RendererContext {
     Scope<Pipeline> geometryPipeline;
     Scope<Pipeline> lightingPipeline;
     Scope<Pipeline> presentPipeline;
-    Scope<Pipeline> fxaaPipeline;
-    Scope<Pipeline> taaPipeline;
 
     Ref<Mesh> quadMesh;
     Ref<Mesh> cubeMesh;
@@ -105,9 +111,8 @@ struct RendererContext {
     Scope<DescriptorPool> globalDescriptorPool;
     Scope<DescriptorSetLayout> compositeSetLayout;
     Scope<DescriptorPool> compositeDescriptorPool;
-    Scope<DescriptorSetLayout> fxaaSetLayout;
-    Scope<DescriptorPool> fxaaDescriptorPool;
-    Scope<DescriptorPool> taaDescriptorPool;
+    Scope<DescriptorSetLayout> presentSetLayout;
+    Scope<DescriptorPool> presentDescriptorPool;
     std::unordered_map<std::string, Ref<Texture>> textureCache;
     std::unordered_map<uint32_t, VkDescriptorSet> objectMaterialDescriptors;
     std::unordered_map<uint32_t, std::string> objectBoundMaterialSignature;
@@ -116,8 +121,7 @@ struct RendererContext {
     std::vector<Scope<Buffer>> globalUboBuffers;
     std::vector<VkDescriptorSet> globalDescriptorSets;
     std::vector<VkDescriptorSet> compositeDescriptorSets;
-    std::vector<VkDescriptorSet> fxaaDescriptorSets;
-    std::vector<VkDescriptorSet> taaDescriptorSets;
+    std::vector<VkDescriptorSet> presentDescriptorSets;
 
     Scope<ShaderLibrary> shaderLibrary;
 
@@ -137,21 +141,19 @@ struct RendererContext {
     VkFormat offscreenWorldPosRoughnessFormat{VK_FORMAT_R16G16B16A16_SFLOAT};
     VkFormat offscreenAlbedoAoFormat{VK_FORMAT_R8G8B8A8_UNORM};
     VkFormat offscreenLightingColorFormat{VK_FORMAT_R16G16B16A16_SFLOAT};
-    VkImage taaHistoryImage{VK_NULL_HANDLE};
-    VmaAllocation taaHistoryAllocation{nullptr};
-    VkImageView taaHistoryImageView{VK_NULL_HANDLE};
+    VkFormat entityIdFormat{VK_FORMAT_R32G32_UINT};
     std::vector<OffscreenFrameResources> offscreenFrames;
 
     VkCommandPool commandPool{VK_NULL_HANDLE};
     VkPipelineLayout geometryPipelineLayout{VK_NULL_HANDLE};
     VkPipelineLayout lightingPipelineLayout{VK_NULL_HANDLE};
-    VkPipelineLayout fxaaPipelineLayout{VK_NULL_HANDLE};
-    bool taaHistoryInitialized{false};
+    VkPipelineLayout presentPipelineLayout{VK_NULL_HANDLE};
 
     std::vector<FrameResources> frameResources;
     std::vector<VkFence> imagesInFlight;
     std::vector<VkSemaphore> renderFinishedSemaphores;
     size_t currentFrame{0};
+    uint32_t lastRenderedImageIndex{0};
 
 };
 

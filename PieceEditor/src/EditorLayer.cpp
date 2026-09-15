@@ -1,9 +1,13 @@
 #include "EditorLayer.h"
 
 #include "imgui.h"
+#include <ImGuizmo.h>
 #include <core/Input.h>
 #include <core/KeyCodes.h>
 #include <event/Event.h>
+#include <renderer/Renderer.h>
+#include <scene/Components.h>
+#include <scene/EditorCamera.h>
 #include <scene/World.h>
 
 namespace Piece {
@@ -94,6 +98,19 @@ void EditorLayer::OnImGuiRender() {
         ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), dockspaceFlags);
     }
 
+    DrawTransformGizmo();
+
+    if (io.MouseClicked[0] && !io.WantCaptureMouse && !ImGui::IsAnyItemActive()
+        && !ImGuizmo::IsOver() && !ImGuizmo::IsUsing()) {
+        const ImVec2 mouse = io.MousePos;
+        if (mouse.x >= 0.0f && mouse.y >= 0.0f) {
+            const UUID picked = Renderer::ReadEntityIdAtPixel(
+                static_cast<uint32_t>(mouse.x),
+                static_cast<uint32_t>(mouse.y));
+            m_SceneHierarchyPanel.SelectEntityByUUID(picked);
+        }
+    }
+
     if (ImGui::BeginMenuBar()) {
         if (ImGui::BeginMenu("View")) {
             ImGui::MenuItem("Metrics", nullptr, &m_ShowMetrics);
@@ -113,6 +130,53 @@ void EditorLayer::OnImGuiRender() {
 
     if (m_ShowMetrics) {
         ImGui::ShowMetricsWindow(&m_ShowMetrics);
+    }
+}
+
+void EditorLayer::DrawTransformGizmo() {
+    Entity selected = m_SceneHierarchyPanel.GetSelectedEntity();
+    if (!selected || !selected.HasComponent<TransformComponent>()) {
+        return;
+    }
+
+    ImGuiIO& io = ImGui::GetIO();
+    const ImVec2 displaySize = io.DisplaySize;
+    ImGuizmo::SetDrawlist(ImGui::GetForegroundDrawList());
+    ImGuizmo::SetRect(0.0f, 0.0f, displaySize.x, displaySize.y);
+    ImGuizmo::SetOrthographic(false);
+
+    if (ImGui::IsKeyPressed(ImGuiKey_W)) {
+        m_GizmoOperation = 0;
+    } else if (ImGui::IsKeyPressed(ImGuiKey_E)) {
+        m_GizmoOperation = 1;
+    } else if (ImGui::IsKeyPressed(ImGuiKey_R)) {
+        m_GizmoOperation = 2;
+    }
+
+    glm::mat4 transform = selected.GetComponent<TransformComponent>().GetTransform();
+    const EditorCamera& camera = Renderer::GetEditorCamera();
+    glm::mat4 gizmoProjection = camera.projection();
+    gizmoProjection[1][1] *= -1.0f;
+    const ImGuizmo::OPERATION operations[] = {
+        ImGuizmo::TRANSLATE,
+        ImGuizmo::ROTATE,
+        ImGuizmo::SCALE};
+
+    if (ImGuizmo::Manipulate(
+            &camera.view()[0][0],
+            &gizmoProjection[0][0],
+            operations[m_GizmoOperation],
+            ImGuizmo::LOCAL,
+            &transform[0][0])) {
+        float translation[3]{};
+        float rotation[3]{};
+        float scale[3]{};
+        ImGuizmo::DecomposeMatrixToComponents(&transform[0][0], translation, rotation, scale);
+
+        auto& entityTransform = selected.GetComponent<TransformComponent>();
+        entityTransform.position = glm::vec3(translation[0], translation[1], translation[2]);
+        entityTransform.rotation = glm::vec3(rotation[0], rotation[1], rotation[2]);
+        entityTransform.scale = glm::vec3(scale[0], scale[1], scale[2]);
     }
 }
 

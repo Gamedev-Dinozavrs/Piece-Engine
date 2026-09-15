@@ -50,6 +50,11 @@ void DestroyOffscreenResources(RendererContext &ctx)
             vkDestroyImageView(ctx.device, frame.msaaEmissiveImageView, nullptr);
             frame.msaaEmissiveImageView = VK_NULL_HANDLE;
         }
+        if (frame.msaaEntityIdImageView != VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(ctx.device, frame.msaaEntityIdImageView, nullptr);
+            frame.msaaEntityIdImageView = VK_NULL_HANDLE;
+        }
         if (frame.worldPosRoughnessImageView != VK_NULL_HANDLE)
         {
             vkDestroyImageView(ctx.device, frame.worldPosRoughnessImageView, nullptr);
@@ -69,6 +74,11 @@ void DestroyOffscreenResources(RendererContext &ctx)
         {
             vkDestroyImageView(ctx.device, frame.emissiveImageView, nullptr);
             frame.emissiveImageView = VK_NULL_HANDLE;
+        }
+        if (frame.entityIdImageView != VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(ctx.device, frame.entityIdImageView, nullptr);
+            frame.entityIdImageView = VK_NULL_HANDLE;
         }
         if (frame.msaaLightingColorImageView != VK_NULL_HANDLE)
         {
@@ -109,6 +119,12 @@ void DestroyOffscreenResources(RendererContext &ctx)
             frame.msaaEmissiveImage = VK_NULL_HANDLE;
             frame.msaaEmissiveAllocation = nullptr;
         }
+        if (frame.msaaEntityIdImage != VK_NULL_HANDLE && frame.msaaEntityIdAllocation != nullptr)
+        {
+            vmaDestroyImage(ctx.deviceWrapper->allocator(), frame.msaaEntityIdImage, frame.msaaEntityIdAllocation);
+            frame.msaaEntityIdImage = VK_NULL_HANDLE;
+            frame.msaaEntityIdAllocation = nullptr;
+        }
         if (frame.worldPosRoughnessImage != VK_NULL_HANDLE && frame.worldPosRoughnessAllocation != nullptr)
         {
             vmaDestroyImage(ctx.deviceWrapper->allocator(), frame.worldPosRoughnessImage, frame.worldPosRoughnessAllocation);
@@ -132,6 +148,12 @@ void DestroyOffscreenResources(RendererContext &ctx)
             vmaDestroyImage(ctx.deviceWrapper->allocator(), frame.emissiveImage, frame.emissiveAllocation);
             frame.emissiveImage = VK_NULL_HANDLE;
             frame.emissiveAllocation = nullptr;
+        }
+        if (frame.entityIdImage != VK_NULL_HANDLE && frame.entityIdAllocation != nullptr)
+        {
+            vmaDestroyImage(ctx.deviceWrapper->allocator(), frame.entityIdImage, frame.entityIdAllocation);
+            frame.entityIdImage = VK_NULL_HANDLE;
+            frame.entityIdAllocation = nullptr;
         }
         if (frame.msaaLightingColorImage != VK_NULL_HANDLE && frame.msaaLightingColorAllocation != nullptr)
         {
@@ -160,28 +182,14 @@ void DestroyCompositeResources(RendererContext &ctx)
     ctx.compositeDescriptorSets.clear();
     ctx.compositeDescriptorPool.reset();
     ctx.compositeSetLayout.reset();
-    ctx.fxaaDescriptorSets.clear();
-    ctx.fxaaDescriptorPool.reset();
-    ctx.taaDescriptorSets.clear();
-    ctx.taaDescriptorPool.reset();
-    ctx.fxaaSetLayout.reset();
+    ctx.presentDescriptorSets.clear();
+    ctx.presentDescriptorPool.reset();
+    ctx.presentSetLayout.reset();
 
     if (ctx.compositeSampler != VK_NULL_HANDLE)
     {
         vkDestroySampler(ctx.device, ctx.compositeSampler, nullptr);
         ctx.compositeSampler = VK_NULL_HANDLE;
-    }
-
-    if (ctx.taaHistoryImageView != VK_NULL_HANDLE)
-    {
-        vkDestroyImageView(ctx.device, ctx.taaHistoryImageView, nullptr);
-        ctx.taaHistoryImageView = VK_NULL_HANDLE;
-    }
-    if (ctx.taaHistoryImage != VK_NULL_HANDLE && ctx.taaHistoryAllocation != nullptr)
-    {
-        vmaDestroyImage(ctx.deviceWrapper->allocator(), ctx.taaHistoryImage, ctx.taaHistoryAllocation);
-        ctx.taaHistoryImage = VK_NULL_HANDLE;
-        ctx.taaHistoryAllocation = nullptr;
     }
 }
 
@@ -215,10 +223,10 @@ void DestroyPipelineLayouts(RendererContext &ctx)
         vkDestroyPipelineLayout(ctx.device, ctx.lightingPipelineLayout, nullptr);
         ctx.lightingPipelineLayout = VK_NULL_HANDLE;
     }
-    if (ctx.fxaaPipelineLayout != VK_NULL_HANDLE)
+    if (ctx.presentPipelineLayout != VK_NULL_HANDLE)
     {
-        vkDestroyPipelineLayout(ctx.device, ctx.fxaaPipelineLayout, nullptr);
-        ctx.fxaaPipelineLayout = VK_NULL_HANDLE;
+        vkDestroyPipelineLayout(ctx.device, ctx.presentPipelineLayout, nullptr);
+        ctx.presentPipelineLayout = VK_NULL_HANDLE;
     }
 }
 
@@ -430,12 +438,31 @@ void CreateGeometryRenderPass(RendererContext &ctx)
         dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-        std::array<VkAttachmentDescription, 5> attachments = {
+        VkAttachmentDescription entityIdAttachment{};
+        entityIdAttachment.format = ctx.entityIdFormat;
+        entityIdAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+        entityIdAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+        entityIdAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+        entityIdAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        entityIdAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        entityIdAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+        entityIdAttachment.finalLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+        VkAttachmentReference entityIdAttachmentRef{};
+        entityIdAttachmentRef.attachment = 5;
+        entityIdAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+        subpass.colorAttachmentCount = 5;
+        std::array<VkAttachmentReference, 5> singleSampleColorRefs{
+            colorAttachmentRefs[0], colorAttachmentRefs[1], colorAttachmentRefs[2], colorAttachmentRefs[3], entityIdAttachmentRef};
+        subpass.pColorAttachments = singleSampleColorRefs.data();
+
+        std::array<VkAttachmentDescription, 6> attachments = {
             worldPosRoughnessAttachment,
             albedoAoAttachment,
             normalAoAttachment,
             emissiveAttachment,
-            depthAttachment};
+            depthAttachment,
+            entityIdAttachment};
 
         VkRenderPassCreateInfo renderPassInfo{};
         renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -501,6 +528,26 @@ void CreateGeometryRenderPass(RendererContext &ctx)
     emissiveAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     emissiveAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
+    VkAttachmentDescription entityIdAttachment{};
+    entityIdAttachment.format = ctx.entityIdFormat;
+    entityIdAttachment.samples = ctx.msaaSamples;
+    entityIdAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    entityIdAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    entityIdAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    entityIdAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    entityIdAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    entityIdAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkAttachmentDescription entityIdAttachmentResolve{};
+    entityIdAttachmentResolve.format = ctx.entityIdFormat;
+    entityIdAttachmentResolve.samples = VK_SAMPLE_COUNT_1_BIT;
+    entityIdAttachmentResolve.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    entityIdAttachmentResolve.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    entityIdAttachmentResolve.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    entityIdAttachmentResolve.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    entityIdAttachmentResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    entityIdAttachmentResolve.finalLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
     VkAttachmentDescription worldPosRoughnessAttachmentResolve{};
     worldPosRoughnessAttachmentResolve.format = ctx.offscreenWorldPosRoughnessFormat;
     worldPosRoughnessAttachmentResolve.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -541,7 +588,7 @@ void CreateGeometryRenderPass(RendererContext &ctx)
     emissiveAttachmentResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     emissiveAttachmentResolve.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-    std::array<VkAttachmentReference, 4> colorAttachmentRefs{};
+    std::array<VkAttachmentReference, 5> colorAttachmentRefs{};
     colorAttachmentRefs[0].attachment = 0;
     colorAttachmentRefs[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     colorAttachmentRefs[1].attachment = 1;
@@ -550,16 +597,20 @@ void CreateGeometryRenderPass(RendererContext &ctx)
     colorAttachmentRefs[2].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     colorAttachmentRefs[3].attachment = 3;
     colorAttachmentRefs[3].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    colorAttachmentRefs[4].attachment = 5;
+    colorAttachmentRefs[4].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    std::array<VkAttachmentReference, 4> resolveAttachmentRefs{};
-    resolveAttachmentRefs[0].attachment = 5;
+    std::array<VkAttachmentReference, 5> resolveAttachmentRefs{};
+    resolveAttachmentRefs[0].attachment = 6;
     resolveAttachmentRefs[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    resolveAttachmentRefs[1].attachment = 6;
+    resolveAttachmentRefs[1].attachment = 7;
     resolveAttachmentRefs[1].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    resolveAttachmentRefs[2].attachment = 7;
+    resolveAttachmentRefs[2].attachment = 8;
     resolveAttachmentRefs[2].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    resolveAttachmentRefs[3].attachment = 8;
+    resolveAttachmentRefs[3].attachment = 9;
     resolveAttachmentRefs[3].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    resolveAttachmentRefs[4].attachment = 10;
+    resolveAttachmentRefs[4].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkAttachmentReference depthAttachmentRef{};
     depthAttachmentRef.attachment = 4;
@@ -587,16 +638,18 @@ void CreateGeometryRenderPass(RendererContext &ctx)
     dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-    std::array<VkAttachmentDescription, 9> attachments = {
+    std::array<VkAttachmentDescription, 11> attachments = {
         worldPosRoughnessAttachment,
         albedoAoAttachment,
         normalAoAttachment,
         emissiveAttachment,
         depthAttachment,
+        entityIdAttachment,
         worldPosRoughnessAttachmentResolve,
         albedoAoAttachmentResolve,
         normalAoAttachmentResolve,
-        emissiveAttachmentResolve
+        emissiveAttachmentResolve,
+        entityIdAttachmentResolve
     };
 
     VkRenderPassCreateInfo renderPassInfo{};
@@ -696,6 +749,14 @@ void CreateOffscreenResources(RendererContext &ctx)
                 frame.emissiveImage,
                 frame.emissiveAllocation,
                 frame.emissiveImageView);
+
+            createColorTarget(
+                ctx.entityIdFormat,
+                VK_SAMPLE_COUNT_1_BIT,
+                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                frame.entityIdImage,
+                frame.entityIdAllocation,
+                frame.entityIdImageView);
         }
         else
         {
@@ -762,6 +823,22 @@ void CreateOffscreenResources(RendererContext &ctx)
                 frame.emissiveImage,
                 frame.emissiveAllocation,
                 frame.emissiveImageView);
+
+            createColorTarget(
+                ctx.entityIdFormat,
+                ctx.msaaSamples,
+                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+                frame.msaaEntityIdImage,
+                frame.msaaEntityIdAllocation,
+                frame.msaaEntityIdImageView);
+
+            createColorTarget(
+                ctx.entityIdFormat,
+                VK_SAMPLE_COUNT_1_BIT,
+                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+                frame.entityIdImage,
+                frame.entityIdAllocation,
+                frame.entityIdImageView);
         }
 
         VkResult result = VK_SUCCESS;
@@ -821,7 +898,7 @@ void CreateOffscreenResources(RendererContext &ctx)
         result = vkCreateImageView(ctx.device, &depthViewInfo, nullptr, &frame.depthImageView);
         PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create offscreen depth image view");
 
-        std::array<VkImageView, 9> attachments{};
+        std::array<VkImageView, 11> attachments{};
         uint32_t attachmentCount = 0;
         if (ctx.msaaSamples == VK_SAMPLE_COUNT_1_BIT)
         {
@@ -831,11 +908,12 @@ void CreateOffscreenResources(RendererContext &ctx)
                 frame.normalAoImageView,
                 frame.emissiveImageView,
                 frame.depthImageView,
+                frame.entityIdImageView,
                 VK_NULL_HANDLE,
                 VK_NULL_HANDLE,
                 VK_NULL_HANDLE,
                 VK_NULL_HANDLE};
-            attachmentCount = 5;
+            attachmentCount = 6;
         }
         else
         {
@@ -845,11 +923,13 @@ void CreateOffscreenResources(RendererContext &ctx)
                 frame.msaaNormalAoImageView,
                 frame.msaaEmissiveImageView,
                 frame.depthImageView,
+                frame.msaaEntityIdImageView,
                 frame.worldPosRoughnessImageView,
                 frame.albedoAoImageView,
                 frame.normalAoImageView,
-                frame.emissiveImageView};
-            attachmentCount = 9;
+                frame.emissiveImageView,
+                frame.entityIdImageView};
+            attachmentCount = 11;
         }
 
         VkFramebufferCreateInfo framebufferInfo{};
@@ -927,20 +1007,14 @@ void CreateCompositeResources(RendererContext &ctx)
                                       .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageCount * 6)
                                       .build();
 
-    ctx.fxaaSetLayout = DescriptorSetLayout::Builder(*ctx.deviceWrapper)
-                            .addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-                            .addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
-                            .build();
+    ctx.presentSetLayout = DescriptorSetLayout::Builder(*ctx.deviceWrapper)
+                               .addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                               .build();
 
-    ctx.fxaaDescriptorPool = DescriptorPool::Builder(*ctx.deviceWrapper)
-                                 .setMaxSets(imageCount)
-                                 .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageCount * 2)
-                                 .build();
-
-    ctx.taaDescriptorPool = DescriptorPool::Builder(*ctx.deviceWrapper)
-                                 .setMaxSets(imageCount)
-                                 .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageCount * 2)
-                                 .build();
+    ctx.presentDescriptorPool = DescriptorPool::Builder(*ctx.deviceWrapper)
+                                    .setMaxSets(imageCount)
+                                    .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageCount)
+                                    .build();
 
     const EnvironmentSettings environment = World::GetEnvironmentSettings();
     const bool useMsaaComposite =
@@ -961,76 +1035,8 @@ void CreateCompositeResources(RendererContext &ctx)
     Ref<Texture> envDiffuseTexture = getOrCreateTexture(environment.diffuseMapPath);
     Ref<Texture> envSpecularTexture = getOrCreateTexture(environment.specularMapPath);
 
-    if (ctx.taaHistoryImage == VK_NULL_HANDLE)
-    {
-        VkImageCreateInfo historyImageInfo{};
-        historyImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        historyImageInfo.imageType = VK_IMAGE_TYPE_2D;
-        historyImageInfo.extent.width = ctx.swapChainExtent.width;
-        historyImageInfo.extent.height = ctx.swapChainExtent.height;
-        historyImageInfo.extent.depth = 1;
-        historyImageInfo.mipLevels = 1;
-        historyImageInfo.arrayLayers = 1;
-        historyImageInfo.format = ctx.swapChainImageFormat;
-        historyImageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
-        historyImageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        historyImageInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-        historyImageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
-        historyImageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-
-        ctx.deviceWrapper->createImageWithInfo(
-            historyImageInfo,
-            VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-            ctx.taaHistoryImage,
-            ctx.taaHistoryAllocation);
-
-        VkImageViewCreateInfo historyViewInfo{};
-        historyViewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        historyViewInfo.image = ctx.taaHistoryImage;
-        historyViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        historyViewInfo.format = ctx.swapChainImageFormat;
-        historyViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        historyViewInfo.subresourceRange.baseMipLevel = 0;
-        historyViewInfo.subresourceRange.levelCount = 1;
-        historyViewInfo.subresourceRange.baseArrayLayer = 0;
-        historyViewInfo.subresourceRange.layerCount = 1;
-
-        VkResult viewResult = vkCreateImageView(ctx.device, &historyViewInfo, nullptr, &ctx.taaHistoryImageView);
-        PIECE_CORE_ASSERT(viewResult == VK_SUCCESS, "Failed to create TAA history image view");
-
-        VkCommandBuffer initCommandBuffer = ctx.deviceWrapper->beginSingleTimeCommands();
-        VkImageMemoryBarrier historyInitBarrier{};
-        historyInitBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-        historyInitBarrier.srcAccessMask = 0;
-        historyInitBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        historyInitBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        historyInitBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        historyInitBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        historyInitBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        historyInitBarrier.image = ctx.taaHistoryImage;
-        historyInitBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-        historyInitBarrier.subresourceRange.baseMipLevel = 0;
-        historyInitBarrier.subresourceRange.levelCount = 1;
-        historyInitBarrier.subresourceRange.baseArrayLayer = 0;
-        historyInitBarrier.subresourceRange.layerCount = 1;
-
-        vkCmdPipelineBarrier(
-            initCommandBuffer,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-            0,
-            0,
-            nullptr,
-            0,
-            nullptr,
-            1,
-            &historyInitBarrier);
-        ctx.deviceWrapper->endSingleTimeCommands(initCommandBuffer);
-    }
-
     ctx.compositeDescriptorSets.assign(imageCount, VK_NULL_HANDLE);
-    ctx.fxaaDescriptorSets.assign(imageCount, VK_NULL_HANDLE);
-    ctx.taaDescriptorSets.assign(imageCount, VK_NULL_HANDLE);
+    ctx.presentDescriptorSets.assign(imageCount, VK_NULL_HANDLE);
     for (uint32_t i = 0; i < imageCount; ++i)
     {
         const bool allocated = ctx.compositeDescriptorPool->allocateDescriptor(
@@ -1085,40 +1091,20 @@ void CreateCompositeResources(RendererContext &ctx)
             .writeImage(5, &envSpecularInfo)
             .overwrite(ctx.compositeDescriptorSets[i]);
 
-        const bool fxaaAllocated = ctx.fxaaDescriptorPool->allocateDescriptor(
-            ctx.fxaaSetLayout->getDescriptorSetLayout(),
-            ctx.fxaaDescriptorSets[i]);
-        PIECE_CORE_ASSERT(fxaaAllocated, "Failed to allocate FXAA descriptor set");
+        const bool presentAllocated = ctx.presentDescriptorPool->allocateDescriptor(
+            ctx.presentSetLayout->getDescriptorSetLayout(),
+            ctx.presentDescriptorSets[i]);
+        PIECE_CORE_ASSERT(presentAllocated, "Failed to allocate present descriptor set");
 
         VkDescriptorImageInfo lightingColorInfo{};
         lightingColorInfo.sampler = ctx.compositeSampler;
         lightingColorInfo.imageView = ctx.offscreenFrames[i].lightingColorImageView;
         lightingColorInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-        VkDescriptorImageInfo worldPosRoughnessFxaaInfo{};
-        worldPosRoughnessFxaaInfo.sampler = ctx.compositeSampler;
-        worldPosRoughnessFxaaInfo.imageView = ctx.offscreenFrames[i].worldPosRoughnessImageView;
-        worldPosRoughnessFxaaInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-        DescriptorWriter(*ctx.fxaaSetLayout, *ctx.fxaaDescriptorPool)
+        DescriptorWriter(*ctx.presentSetLayout, *ctx.presentDescriptorPool)
             .writeImage(0, &lightingColorInfo)
-            .writeImage(1, &worldPosRoughnessFxaaInfo)
-            .overwrite(ctx.fxaaDescriptorSets[i]);
+            .overwrite(ctx.presentDescriptorSets[i]);
 
-        const bool taaAllocated = ctx.taaDescriptorPool->allocateDescriptor(
-            ctx.fxaaSetLayout->getDescriptorSetLayout(),
-            ctx.taaDescriptorSets[i]);
-        PIECE_CORE_ASSERT(taaAllocated, "Failed to allocate TAA descriptor set");
-
-        VkDescriptorImageInfo taaHistoryInfo{};
-        taaHistoryInfo.sampler = ctx.compositeSampler;
-        taaHistoryInfo.imageView = ctx.taaHistoryImageView;
-        taaHistoryInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-
-        DescriptorWriter(*ctx.fxaaSetLayout, *ctx.taaDescriptorPool)
-            .writeImage(0, &lightingColorInfo)
-            .writeImage(1, &taaHistoryInfo)
-            .overwrite(ctx.taaDescriptorSets[i]);
     }
 }
 
@@ -1133,6 +1119,7 @@ void CreateGraphicsPipeline(RendererContext& ctx) {
     geometryConfig.renderPass = ctx.geometryRenderPass;
     geometryConfig.pipelineLayout = ctx.geometryPipelineLayout;
     geometryConfig.colorBlendAttachments = {
+        geometryConfig.colorBlendAttachments[0],
         geometryConfig.colorBlendAttachments[0],
         geometryConfig.colorBlendAttachments[0],
         geometryConfig.colorBlendAttachments[0],
@@ -1178,32 +1165,20 @@ void CreateGraphicsPipeline(RendererContext& ctx) {
                 : "lighting_composite.frag"),
         lightingConfig);
 
-    PipelineConfigInfo fxaaConfig{};
-    Pipeline::defaultPipelineConfigInfo(fxaaConfig);
-    fxaaConfig.renderPass = ctx.presentRenderPass;
-    fxaaConfig.pipelineLayout = ctx.fxaaPipelineLayout;
-    fxaaConfig.bindingDescriptions.clear();
-    fxaaConfig.attributeDescriptions.clear();
-    fxaaConfig.depthStencilInfo.depthTestEnable = VK_FALSE;
-    fxaaConfig.depthStencilInfo.depthWriteEnable = VK_FALSE;
-
-    ctx.fxaaPipeline = CreateScope<Pipeline>(
-        *ctx.deviceWrapper,
-        *ctx.shaderLibrary->Get("lighting_composite.vert"),
-        *ctx.shaderLibrary->Get("fxaa.frag"),
-        fxaaConfig);
-
-    ctx.taaPipeline = CreateScope<Pipeline>(
-        *ctx.deviceWrapper,
-        *ctx.shaderLibrary->Get("lighting_composite.vert"),
-        *ctx.shaderLibrary->Get("taa.frag"),
-        fxaaConfig);
+    PipelineConfigInfo presentConfig{};
+    Pipeline::defaultPipelineConfigInfo(presentConfig);
+    presentConfig.renderPass = ctx.presentRenderPass;
+    presentConfig.pipelineLayout = ctx.presentPipelineLayout;
+    presentConfig.bindingDescriptions.clear();
+    presentConfig.attributeDescriptions.clear();
+    presentConfig.depthStencilInfo.depthTestEnable = VK_FALSE;
+    presentConfig.depthStencilInfo.depthWriteEnable = VK_FALSE;
 
     ctx.presentPipeline = CreateScope<Pipeline>(
         *ctx.deviceWrapper,
         *ctx.shaderLibrary->Get("lighting_composite.vert"),
         *ctx.shaderLibrary->Get("present.frag"),
-        fxaaConfig);
+        presentConfig);
 }
 
 } // namespace RendererInternals

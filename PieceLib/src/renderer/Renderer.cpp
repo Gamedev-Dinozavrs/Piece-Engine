@@ -1,5 +1,6 @@
 #include <PiecePCH.h>
 #include <Piece.h>
+#include <renderer/Buffer.h>
 
 #include "imgui.h"
 #include <GLFW/glfw3.h>
@@ -350,7 +351,6 @@ namespace Piece
 
         const EnvironmentSettings environment = World::GetEnvironmentSettings();
         ctx.msaaSamples = ChooseMsaaSamples(ctx.deviceWrapper->m_PhysicalDeviceProperties, environment.aaTechnique, environment.msaaSampleCount);
-        ctx.taaHistoryInitialized = false;
 
         // create swapchain wrapper which also creates image views, render pass, framebuffers and sync
         VkExtent2D extent = GetValidSwapChainExtent(ctx.window);
@@ -418,13 +418,13 @@ namespace Piece
         result = vkCreatePipelineLayout(ctx.device, &lightingLayoutInfo, nullptr, &ctx.lightingPipelineLayout);
         PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create lighting pipeline layout");
 
-        VkPipelineLayoutCreateInfo fxaaLayoutInfo{};
-        fxaaLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        VkDescriptorSetLayout fxaaSetLayout = ctx.fxaaSetLayout->getDescriptorSetLayout();
-        fxaaLayoutInfo.setLayoutCount = 1;
-        fxaaLayoutInfo.pSetLayouts = &fxaaSetLayout;
-        result = vkCreatePipelineLayout(ctx.device, &fxaaLayoutInfo, nullptr, &ctx.fxaaPipelineLayout);
-        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create FXAA pipeline layout");
+        VkDescriptorSetLayout presentSetLayouts[] = {
+            ctx.presentSetLayout->getDescriptorSetLayout(),
+            ctx.globalSetLayout->getDescriptorSetLayout()};
+        lightingLayoutInfo.setLayoutCount = 2;
+        lightingLayoutInfo.pSetLayouts = presentSetLayouts;
+        result = vkCreatePipelineLayout(ctx.device, &lightingLayoutInfo, nullptr, &ctx.presentPipelineLayout);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create present pipeline layout");
 
         const PrimitiveMeshData quadMeshData = PrimitiveMeshDataFactory::CreateQuad();
         ctx.quadMesh = CreateRef<Mesh>(*ctx.deviceWrapper, quadMeshData.vertices, quadMeshData.indices);
@@ -449,8 +449,6 @@ namespace Piece
         ctx.shaderLibrary->Load("lighting_composite.frag", PIECE_SHADER_DIR "/lighting_composite.frag.spv", Shader::Stage::Fragment);
         ctx.shaderLibrary->Load("lighting_composite_msaa.frag", PIECE_SHADER_DIR "/lighting_composite_msaa.frag.spv", Shader::Stage::Fragment);
         ctx.shaderLibrary->Load("present.frag", PIECE_SHADER_DIR "/present.frag.spv", Shader::Stage::Fragment);
-        ctx.shaderLibrary->Load("taa.frag", PIECE_SHADER_DIR "/taa.frag.spv", Shader::Stage::Fragment);
-        ctx.shaderLibrary->Load("fxaa.frag", PIECE_SHADER_DIR "/fxaa.frag.spv", Shader::Stage::Fragment);
 
         RendererInternals::CreateGraphicsPipeline(ctx);
         // command pool is created by Device; get it
@@ -492,8 +490,6 @@ namespace Piece
         ctx.geometryPipeline.reset();
         ctx.lightingPipeline.reset();
         ctx.presentPipeline.reset();
-        ctx.taaPipeline.reset();
-        ctx.fxaaPipeline.reset();
         RendererInternals::DestroyPipelineLayouts(ctx);
         RendererInternals::DestroyLightingRenderPass(ctx);
 
@@ -539,15 +535,10 @@ namespace Piece
         const VkSampleCountFlagBits desiredMsaa = ResolveMsaaSamples(ctx.deviceWrapper->m_PhysicalDeviceProperties, environment.aaTechnique, environment.msaaSampleCount);
         if (desiredMsaa != ctx.msaaSamples)
         {
-            ctx.taaHistoryInitialized = false;
             RecreateSwapChain();
             return;
         }
 
-        if (environment.aaTechnique != AATechnique::TAA)
-        {
-            ctx.taaHistoryInitialized = false;
-        }
 
         uint32_t imageIndex;
         FrameResources &frameResources = ctx.frameResources[ctx.currentFrame];
@@ -561,6 +552,7 @@ namespace Piece
         PIECE_CORE_ASSERT(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR, "Failed to acquire swapchain image");
 
         frameResources.imageIndex = imageIndex;
+        ctx.lastRenderedImageIndex = imageIndex;
 
         LightingRenderSystem::UpdatePerFrame(ctx, static_cast<uint32_t>(ctx.currentFrame));
 
@@ -594,14 +586,12 @@ namespace Piece
                         EnsureObjectMaterialDescriptor(ctx, static_cast<uint32_t>(entityHandle), meshRenderer.materialId, meshRenderer.materialTextures);
                     }
                     EnsureCompositeEnvironmentDescriptors(ctx);
-                    ctx.taaHistoryInitialized = false;
                 }
             }
             else if (environmentChanged)
             {
                 vkDeviceWaitIdle(ctx.device);
                 EnsureCompositeEnvironmentDescriptors(ctx);
-                ctx.taaHistoryInitialized = false;
             }
         }
 
@@ -691,6 +681,49 @@ namespace Piece
             s_Context->camera->onMouseScroll(event.GetOffsetY());
         }
         return false;
+    }
+
+    UUID Renderer::ReadEntityIdAtPixel(uint32_t x, uint32_t y)
+    {
+        if (!s_Context || x >= s_Context->swapChainExtent.width || y >= s_Context->swapChainExtent.height)
+        {
+            return UUID{0};
+        }
+
+        RendererContext &ctx = *s_Context;
+        vkDeviceWaitIdle(ctx.device);
+
+        const OffscreenFrameResources &frame = ctx.offscreenFrames[ctx.lastRenderedImageIndex];
+        Scope<Buffer> readback = CreateScope<Buffer>(
+            *ctx.deviceWrapper,
+            sizeof(uint32_t) * 2,
+            VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+            VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+
+        VkCommandBuffer commandBuffer = ctx.deviceWrapper->beginSingleTimeCommands();
+        VkBufferImageCopy region{};
+        region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        region.imageSubresource.layerCount = 1;
+        region.imageOffset = {static_cast<int32_t>(x), static_cast<int32_t>(y), 0};
+        region.imageExtent = {1, 1, 1};
+        vkCmdCopyImageToBuffer(
+            commandBuffer,
+            frame.entityIdImage,
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            readback->getBuffer(),
+            1,
+            &region);
+        ctx.deviceWrapper->endSingleTimeCommands(commandBuffer);
+
+        uint32_t idParts[2]{};
+        readback->read(idParts, sizeof(idParts));
+        return UUID{(static_cast<uint64_t>(idParts[1]) << 32u) | idParts[0]};
+    }
+
+    EditorCamera& Renderer::GetEditorCamera()
+    {
+        PIECE_CORE_ASSERT(s_Context && s_Context->camera, "Renderer camera is not initialized");
+        return *s_Context->camera;
     }
 
     Device &Renderer::GetDevice()
@@ -921,8 +954,6 @@ namespace Piece
         ctx.geometryPipeline.reset();
         ctx.lightingPipeline.reset();
         ctx.presentPipeline.reset();
-        ctx.taaPipeline.reset();
-        ctx.fxaaPipeline.reset();
         RendererInternals::DestroyPipelineLayouts(ctx);
         RendererInternals::DestroyCompositeResources(ctx);
         RendererInternals::DestroyOffscreenResources(ctx);
@@ -956,7 +987,6 @@ namespace Piece
 
         const EnvironmentSettings environment = World::GetEnvironmentSettings();
         ctx.msaaSamples = ChooseMsaaSamples(ctx.deviceWrapper->m_PhysicalDeviceProperties, environment.aaTechnique, environment.msaaSampleCount);
-        ctx.taaHistoryInitialized = false;
 
         RendererInternals::CreateGeometryRenderPass(ctx);
     RendererInternals::CreateLightingRenderPass(ctx);
@@ -991,13 +1021,13 @@ namespace Piece
         result = vkCreatePipelineLayout(ctx.device, &lightingLayoutInfo, nullptr, &ctx.lightingPipelineLayout);
         PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to recreate lighting pipeline layout");
 
-        VkPipelineLayoutCreateInfo fxaaLayoutInfo{};
-        fxaaLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-        VkDescriptorSetLayout fxaaSetLayout = ctx.fxaaSetLayout->getDescriptorSetLayout();
-        fxaaLayoutInfo.setLayoutCount = 1;
-        fxaaLayoutInfo.pSetLayouts = &fxaaSetLayout;
-        result = vkCreatePipelineLayout(ctx.device, &fxaaLayoutInfo, nullptr, &ctx.fxaaPipelineLayout);
-        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to recreate FXAA pipeline layout");
+        VkDescriptorSetLayout presentSetLayouts[] = {
+            ctx.presentSetLayout->getDescriptorSetLayout(),
+            ctx.globalSetLayout->getDescriptorSetLayout()};
+        lightingLayoutInfo.setLayoutCount = 2;
+        lightingLayoutInfo.pSetLayouts = presentSetLayouts;
+        result = vkCreatePipelineLayout(ctx.device, &lightingLayoutInfo, nullptr, &ctx.presentPipelineLayout);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to recreate present pipeline layout");
 
         RendererInternals::CreateGraphicsPipeline(ctx);
         CreateCommandBuffers();

@@ -26,11 +26,9 @@ Cross-platform support is currently in progress, with the main remaining gap bei
 	- Normal + AO
 	- Emissive
 	- Depth
-- Configurable anti-aliasing pipeline
+- MSAA pipeline
 	- Off
-	- FXAA
 	- MSAA (1x/2x/4x/8x depending on GPU support)
-	- TAA
 - Lighting controls
 	- Directional lighting
 	- Point lights
@@ -74,7 +72,7 @@ Cross-platform support is currently in progress, with the main remaining gap bei
 - Scene hierarchy panel
 - Content browser panel
 - Material editing tools
-- LookDev controls for lighting, environment, and AA
+- LookDev controls for lighting, environment, and MSAA
 - Environment texture assignment tools
 	- Diffuse environment map picker/clear
 	- Specular environment map picker/clear

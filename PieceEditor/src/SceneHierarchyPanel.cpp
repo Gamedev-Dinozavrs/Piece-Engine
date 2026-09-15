@@ -87,12 +87,8 @@ const char* AATechniqueLabel(AATechnique technique) {
     switch (technique) {
     case AATechnique::Off:
         return "Off";
-    case AATechnique::FXAA:
-        return "FXAA";
     case AATechnique::MSAA:
         return "MSAA";
-    case AATechnique::TAA:
-        return "TAA";
     default:
         return "Unknown";
     }
@@ -184,6 +180,10 @@ void SceneHierarchyPanel::SetContext(const Ref<Scene>& scene) {
         m_Context = scene;
         m_SelectionContext = {};
     }
+}
+
+void SceneHierarchyPanel::SelectEntityByUUID(UUID uuid) {
+    m_SelectionContext = FindEntityByUUID(m_Context, uuid);
 }
 
 void SceneHierarchyPanel::OnImGuiRender() {
@@ -338,7 +338,7 @@ void SceneHierarchyPanel::DrawLookDevTools() {
     ImGui::DragFloat("IBL Intensity", &environment.intensity, 0.01f, 0.0f, 8.0f);
     ImGui::DragFloat("Diffuse Strength", &environment.diffuseStrength, 0.01f, 0.0f, 4.0f);
     ImGui::DragFloat("IBL Specular Strength", &environment.specularStrength, 0.01f, 0.0f, 4.0f);
-    const char* aaTechniqueItems[] = {"Off", "FXAA", "MSAA", "TAA"};
+    const char* aaTechniqueItems[] = {"Off", "MSAA"};
     int aaTechniqueIndex = static_cast<int>(environment.aaTechnique);
     if (ImGui::Combo("AA Technique", &aaTechniqueIndex, aaTechniqueItems, IM_ARRAYSIZE(aaTechniqueItems))) {
         environment.aaTechnique = static_cast<AATechnique>(aaTechniqueIndex);
@@ -359,7 +359,7 @@ void SceneHierarchyPanel::DrawLookDevTools() {
     ImGui::EndDisabled();
     ImGui::Text("Current AA: %s", AATechniqueLabel(environment.aaTechnique));
     ImGui::Text("Current MSAA: %ux", environment.msaaSampleCount);
-    ImGui::TextDisabled("Off keeps shapes sharp; FXAA softens edges; MSAA smooths geometry; TAA accumulates frames.");
+    ImGui::TextDisabled("Off keeps shapes sharp; MSAA smooths geometry edges with GPU multisampling.");
     ImGui::Text("Diffuse Map: %s", GetDisplayFileName(environment.diffuseMapPath).c_str());
     if (ImGui::Button("Set Diffuse Env")) {
         const char* imageFilter = "Image Files\0*.png;*.jpg;*.jpeg;*.bmp;*.tga;*.hdr\0All Files\0*.*\0";
@@ -1035,7 +1035,10 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
             auto& light = entity.GetComponent<PointLightComponent>();
             ImGui::ColorEdit3("Color", &light.color.x);
             ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 100.0f);
-            ImGui::DragFloat("Radius", &light.radius, 0.05f, 0.01f, 100.0f);
+            ImGui::DragFloat("Outer Radius", &light.radius, 0.05f, 0.01f, 100.0f);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Outer distance where point-light influence fades to zero.");
+            }
             ImGui::TreePop();
         }
     }

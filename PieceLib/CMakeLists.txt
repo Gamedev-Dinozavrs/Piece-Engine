@@ -35,7 +35,12 @@ set(IMGUI_SOURCES
     ${CMAKE_SOURCE_DIR}/Dependencies/imgui/backends/imgui_impl_vulkan.cpp
 )
 
-add_library(PieceLib STATIC ${CORE} ${WINDOW} ${EVENT} ${LAYER} ${GUI} ${ASSETS} ${RENDERER} ${SCENE} ${UTILS} ${CORE_SOURCES} ${IMGUI_SOURCES} ${CMAKE_SOURCE_DIR}/Dependencies/stb_image/stb_image.cpp)
+set(IMGUIZMO_SOURCES
+    ${CMAKE_SOURCE_DIR}/Dependencies/ImGuizmo/src/ImGuizmo.cpp
+    ${CMAKE_SOURCE_DIR}/Dependencies/ImGuizmo/src/ImGuizmo.h
+)
+
+add_library(PieceLib STATIC ${CORE} ${WINDOW} ${EVENT} ${LAYER} ${GUI} ${ASSETS} ${RENDERER} ${SCENE} ${UTILS} ${CORE_SOURCES} ${IMGUI_SOURCES} ${IMGUIZMO_SOURCES} ${CMAKE_SOURCE_DIR}/Dependencies/stb_image/stb_image.cpp)
 
 target_precompile_headers(PieceLib PRIVATE src/PiecePCH.h)
 
@@ -59,6 +64,7 @@ target_include_directories(PieceLib
         ${CMAKE_SOURCE_DIR}/Dependencies/stb_image
         ${CMAKE_SOURCE_DIR}/Dependencies/imgui
         ${CMAKE_SOURCE_DIR}/Dependencies/imgui/backends
+        ${CMAKE_SOURCE_DIR}/Dependencies/ImGuizmo/src
         ${CMAKE_SOURCE_DIR}/Dependencies/spdlog/include
         ${CMAKE_SOURCE_DIR}/Dependencies/entt/include
         ${CMAKE_SOURCE_DIR}/Dependencies/tinyobjloader

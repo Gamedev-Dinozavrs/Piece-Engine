@@ -5,6 +5,7 @@
 #include "imgui.h"
 #include "backends/imgui_impl_glfw.h"
 #include "backends/imgui_impl_vulkan.h"
+#include <ImGuizmo.h>
 
 #include <renderer/Device.h>
 #include <renderer/RenderPass.h>
@@ -29,6 +30,7 @@ namespace Piece {
 		// Setup ImGui context
 		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
+		ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
 		ImGuiIO& io = ImGui::GetIO();
 		
 		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
@@ -132,6 +134,7 @@ namespace Piece {
 		ImGui_ImplVulkan_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
+		ImGuizmo::BeginFrame();
 	}
 
 	void ImGuiLayer::End() {

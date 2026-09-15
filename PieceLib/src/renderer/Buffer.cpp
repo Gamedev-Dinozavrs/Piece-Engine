@@ -47,6 +47,14 @@ void Buffer::write(const void* data, VkDeviceSize size, VkDeviceSize offset) {
     std::memcpy(static_cast<char*>(mapped_) + offset, data, static_cast<size_t>(size));
 }
 
+void Buffer::read(void* data, VkDeviceSize size, VkDeviceSize offset) {
+    if (!mapped_) {
+        map(size, offset);
+    }
+    invalidate(size, offset);
+    std::memcpy(data, static_cast<const char*>(mapped_) + offset, static_cast<size_t>(size));
+}
+
 VkResult Buffer::flush(VkDeviceSize size, VkDeviceSize offset) {
     if (properties_ & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) return VK_SUCCESS;
 

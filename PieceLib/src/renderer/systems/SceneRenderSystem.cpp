@@ -17,30 +17,6 @@ namespace SceneRenderSystem {
 
 namespace {
 
-float Halton(uint32_t index, uint32_t base) {
-	float result = 0.0f;
-	float f = 1.0f;
-	uint32_t current = index;
-	while (current > 0) {
-		f /= static_cast<float>(base);
-		result += f * static_cast<float>(current % base);
-		current /= base;
-	}
-	return result;
-}
-
-glm::vec2 GetTaaJitter(const RendererContext& ctx) {
-	if (World::GetEnvironmentSettings().aaTechnique != AATechnique::TAA || ctx.swapChainExtent.width == 0 || ctx.swapChainExtent.height == 0) {
-		return glm::vec2(0.0f);
-	}
-
-	const uint32_t sampleIndex = static_cast<uint32_t>(ctx.currentFrame % 8u) + 1u;
-	glm::vec2 jitter{
-		Halton(sampleIndex, 2u) - 0.5f,
-		Halton(sampleIndex, 3u) - 0.5f};
-	return jitter / glm::vec2(static_cast<float>(ctx.swapChainExtent.width), static_cast<float>(ctx.swapChainExtent.height));
-}
-
 Entity FindEntityByUUID(Scene& scene, UUID uuid) {
 	auto view = scene.GetAllEntitiesViewWith<TagComponent>();
 	for (auto entityHandle : view) {
@@ -123,9 +99,6 @@ void Record(const RendererContext& ctx, const FrameInfo& frameInfo) {
 
 		glm::mat4 view = frameInfo.camera->view();
 		glm::mat4 proj = frameInfo.camera->projection();
-		const glm::vec2 jitter = GetTaaJitter(ctx);
-		proj[2][0] += jitter.x * 2.0f;
-		proj[2][1] += jitter.y * 2.0f;
 
 		ScenePushConstants push{};
 		push.mvp = proj * view * model;
@@ -140,6 +113,9 @@ void Record(const RendererContext& ctx, const FrameInfo& frameInfo) {
 		push.materialData.x = (meshRenderer.normalSource == NormalSource::Vertex) ? 1 : 0;
 		auto flagsIt = ctx.objectMaterialFlags.find(static_cast<uint32_t>(entityHandle));
 		push.materialData.y = (flagsIt != ctx.objectMaterialFlags.end()) ? static_cast<int>(flagsIt->second) : 0;
+		const uint64_t uuid = static_cast<uint64_t>(entity.GetComponent<TagComponent>().id);
+		push.materialData.z = static_cast<int32_t>(uuid & 0xffffffffu);
+		push.materialData.w = static_cast<int32_t>(uuid >> 32u);
 
 		vkCmdPushConstants(
 			frameInfo.commandBuffer,

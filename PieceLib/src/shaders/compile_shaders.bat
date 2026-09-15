@@ -12,7 +12,5 @@ cd /d "%SHADER_DIR%"
 "%GLSLC%" -I "%SHADER_DIR%" lighting_composite.frag -o lighting_composite.frag.spv
 "%GLSLC%" -I "%SHADER_DIR%" lighting_composite_msaa.frag -o lighting_composite_msaa.frag.spv
 "%GLSLC%" -I "%SHADER_DIR%" present.frag -o present.frag.spv
-"%GLSLC%" -I "%SHADER_DIR%" taa.frag -o taa.frag.spv
-"%GLSLC%" -I "%SHADER_DIR%" fxaa.frag -o fxaa.frag.spv
 
 endlocal

@@ -17,6 +17,9 @@ public:
     explicit SceneHierarchyPanel(const Ref<Scene>& scene);
 
     void SetContext(const Ref<Scene>& scene);
+    void SelectEntityByUUID(UUID uuid);
+    Entity GetSelectedEntity() const { return m_SelectionContext; }
+    void SetSelectedEntity(const Entity& entity) { m_SelectionContext = entity; }
     void OnImGuiRender();
 
 private:
