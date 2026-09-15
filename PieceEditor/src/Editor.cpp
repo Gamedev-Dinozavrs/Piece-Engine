@@ -1,7 +1,7 @@
 //pch
 //inc
 
-#include "../../PieceLib/src/core/Application.h" // TODO: Add include dir
+#include <core/Application.h>
 #include <core/EntryPoint.h>
 #include "EditorLayer.h"
 

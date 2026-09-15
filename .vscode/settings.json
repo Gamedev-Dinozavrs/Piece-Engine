@@ -1,5 +1,26 @@
 {
-  "cmakeGenerator": "Ninja",               // Linux/Mac
-  "exeSubfolder": "Debug",                 // Windows builds go in Debug folder
-  "exeExt": ".exe"                         // Windows executable extension
+  "cmake.generator": "Visual Studio 18 2026",
+  "cmake.configureArgs": [
+    "-A",
+    "x64"
+  ],
+  "cmake.configureOnOpen": true,
+  "cmake.buildDirectory": "${workspaceFolder}/build",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/compile_commands.json",
+  "C_Cpp.default.includePath": [
+    "${workspaceFolder}/PieceLib/src",
+    "${workspaceFolder}/PieceEditor/src",
+    "${workspaceFolder}/Dependencies",
+    "${workspaceFolder}/Dependencies/glfw/include",
+    "${workspaceFolder}/Dependencies/glm",
+    "${workspaceFolder}/Dependencies/imgui",
+    "${workspaceFolder}/Dependencies/imgui/backends",
+    "${workspaceFolder}/Dependencies/spdlog/include",
+    "${workspaceFolder}/Dependencies/entt/include",
+    "${workspaceFolder}/Dependencies/tinyobjloader",
+    "${workspaceFolder}/Dependencies/fastgltf/include",
+    "${env:VULKAN_SDK}/Include"
+  ],
+  "exeSubfolder": "Debug",
+  "exeExt": ".exe"
 }

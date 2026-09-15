@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(Piece VERSION 1.0 LANGUAGES CXX)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 if (DEFINED ENV{VULKAN_SDK})
     set(VULKAN_SDK_PATH $ENV{VULKAN_SDK})
 else()
