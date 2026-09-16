@@ -145,12 +145,8 @@ void EditorLayer::DrawTransformGizmo() {
     ImGuizmo::SetRect(0.0f, 0.0f, displaySize.x, displaySize.y);
     ImGuizmo::SetOrthographic(false);
 
-    if (ImGui::IsKeyPressed(ImGuiKey_W)) {
-        m_GizmoOperation = 0;
-    } else if (ImGui::IsKeyPressed(ImGuiKey_E)) {
-        m_GizmoOperation = 1;
-    } else if (ImGui::IsKeyPressed(ImGuiKey_R)) {
-        m_GizmoOperation = 2;
+    if (ImGui::IsKeyPressed(ImGuiKey_G)) {
+        m_GizmoOperation = (m_GizmoOperation + 1) % 3;
     }
 
     glm::mat4 transform = selected.GetComponent<TransformComponent>().GetTransform();

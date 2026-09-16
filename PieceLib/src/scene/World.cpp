@@ -7,6 +7,8 @@
 #include <scene/Scene.h>
 #include <renderer/Renderer.h>
 
+#include <cctype>
+
 namespace Piece {
 
 namespace World {
@@ -49,6 +51,41 @@ uint32_t EnsureDefaultMaterialId() {
     s_Materials.push_back(material);
     s_DefaultMaterialId = material.id;
     return s_DefaultMaterialId;
+}
+
+std::string ToLowerMaterialName(const std::string& name) {
+    std::string lower = name;
+    for (char& character : lower) {
+        character = static_cast<char>(std::tolower(static_cast<unsigned char>(character)));
+    }
+    return lower;
+}
+
+std::string MakeUniqueMaterialName(const std::string& requestedName, uint32_t ignoredMaterialId = 0) {
+    const std::string baseName = requestedName.empty() ? "Material" : requestedName;
+    auto nameExists = [ignoredMaterialId](const std::string& candidate) {
+        const std::string lowerCandidate = ToLowerMaterialName(candidate);
+        for (const auto& material : s_Materials) {
+            if (material.id == ignoredMaterialId) {
+                continue;
+            }
+            if (ToLowerMaterialName(material.name) == lowerCandidate) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    if (!nameExists(baseName)) {
+        return baseName;
+    }
+
+    for (uint32_t suffix = 2; ; ++suffix) {
+        const std::string candidate = baseName + " (" + std::to_string(suffix) + ")";
+        if (!nameExists(candidate)) {
+            return candidate;
+        }
+    }
 }
 
 Ref<Scene> EnsureScene() {
@@ -394,9 +431,13 @@ bool SetEntityMaterial(uint32_t entityId, uint32_t materialId) {
 uint32_t CreateMaterial(const std::string& name) {
     MaterialRecord material{};
     material.id = s_NextMaterialId++;
-    material.name = name.empty() ? "Material " + std::to_string(material.id) : name;
+    material.name = MakeUniqueMaterialName(name);
     s_Materials.push_back(material);
     return material.id;
+}
+
+uint32_t GetDefaultMaterialId() {
+    return EnsureDefaultMaterialId();
 }
 
 std::vector<MaterialView> GetMaterials() {
@@ -411,6 +452,23 @@ std::vector<MaterialView> GetMaterials() {
         materials.push_back(std::move(view));
     }
     return materials;
+}
+
+bool SetMaterialName(uint32_t materialId, const std::string& name) {
+    if (name.empty()) {
+        return false;
+    }
+
+    for (auto& material : s_Materials) {
+        if (material.id != materialId) {
+            continue;
+        }
+
+        material.name = MakeUniqueMaterialName(name, materialId);
+        return true;
+    }
+
+    return false;
 }
 
 bool SetMaterialTexturePath(uint32_t materialId, TextureSlot slot, const std::string& path) {

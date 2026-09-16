@@ -125,8 +125,7 @@ vec3 ComputeLighting(vec3 baseColor, vec3 normal, vec3 worldPos, vec3 viewDir, f
         lighting += CookTorrance(baseColor, metallic, roughness, normal, viewDir, pointLightDir, pointLightColor);
     }
 
-    // Ambient — flat placeholder until IBL is added.
-    vec3 ambient = 0.03 * baseColor * ao;
+    vec3 ambient = max(u_Lighting.specularParams.w, 0.0) * baseColor * ao;
 
     return ambient + lighting;
 }
@@ -157,6 +156,6 @@ vec3 ComputeLighting(vec3 baseColor, vec3 normal, vec3 worldPos, vec3 viewDir, f
         lighting += CookTorrance(baseColor, metallic, roughness, normal, viewDir, pointLightDir, pointLightColor);
     }
 
-    vec3 ambient = 0.03 * baseColor * ao;
+    vec3 ambient = max(u_Lighting.specularParams.w, 0.0) * baseColor * ao;
     return ambient + lighting;
 }

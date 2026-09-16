@@ -11,7 +11,7 @@
 
 namespace Piece {
 
-Texture::Texture(Device& device, const std::string& filepath)
+Texture::Texture(Device& device, const std::string& filepath, bool isColorData)
     : m_Device(device) {
     int channels;
     stbi_uc* pixels = stbi_load(filepath.c_str(), &m_Width, &m_Height, &channels, STBI_rgb_alpha);
@@ -33,7 +33,7 @@ Texture::Texture(Device& device, const std::string& filepath)
     staging->flush(imageSize, 0);
     staging->unmap();
 
-    m_ImageFormat = VK_FORMAT_R8G8B8A8_SRGB;
+    m_ImageFormat = isColorData ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
 
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;

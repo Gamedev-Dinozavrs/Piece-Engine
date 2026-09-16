@@ -54,16 +54,17 @@ namespace Piece
                 + std::to_string(environment.msaaSampleCount);
         }
 
-        Ref<Texture> GetOrCreateTexture(RendererContext &ctx, const std::string &texturePath)
+        Ref<Texture> GetOrCreateTexture(RendererContext &ctx, const std::string &texturePath, bool isColorData = true)
         {
-            const std::string key = texturePath.empty() ? "__DEFAULT_WHITE__" : texturePath;
+            const std::string key = (texturePath.empty() ? "__DEFAULT_WHITE__" : texturePath)
+                + (isColorData ? "|color" : "|data");
             auto it = ctx.textureCache.find(key);
             if (it != ctx.textureCache.end())
             {
                 return it->second;
             }
 
-            Ref<Texture> texture = CreateRef<Texture>(*ctx.deviceWrapper, texturePath);
+            Ref<Texture> texture = CreateRef<Texture>(*ctx.deviceWrapper, texturePath, isColorData);
             ctx.textureCache[key] = texture;
             return texture;
         }
@@ -160,9 +161,9 @@ namespace Piece
             }
 
             auto albedoTexture = GetOrCreateTexture(ctx, resolvedMaterial.albedoPath);
-            auto normalTexture = GetOrCreateTexture(ctx, resolvedMaterial.normalPath);
-            auto roughnessTexture = GetOrCreateTexture(ctx, resolvedMaterial.roughnessPath);
-            auto aoTexture = GetOrCreateTexture(ctx, resolvedMaterial.ambientOcclusionPath);
+            auto normalTexture = GetOrCreateTexture(ctx, resolvedMaterial.normalPath, false);
+            auto roughnessTexture = GetOrCreateTexture(ctx, resolvedMaterial.roughnessPath, false);
+            auto aoTexture = GetOrCreateTexture(ctx, resolvedMaterial.ambientOcclusionPath, false);
             auto emissiveTexture = GetOrCreateTexture(ctx, resolvedMaterial.emissivePath);
 
             VkDescriptorImageInfo albedoImageInfo{};

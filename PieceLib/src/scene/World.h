@@ -63,6 +63,7 @@ struct EnvironmentSettings {
     float intensity{1.0f};
     float diffuseStrength{1.0f};
     float specularStrength{1.0f};
+    float ambientStrength{0.08f};
     AATechnique aaTechnique{AATechnique::MSAA};
     uint32_t msaaSampleCount{4};
 };
@@ -75,7 +76,7 @@ struct SpawnTransform {
 
 struct MaterialSurfaceFactors {
     float roughnessFactor{1.0f};
-    float metallicFactor{1.0f};
+    float metallicFactor{0.0f};
 };
 
 struct MaterialView {
@@ -112,7 +113,9 @@ bool SetEntityTransform(uint32_t entityId, const SpawnTransform& transform);
 bool SetEntityMaterial(uint32_t entityId, uint32_t materialId);
 
 uint32_t CreateMaterial(const std::string& name = "Material");
+uint32_t GetDefaultMaterialId();
 std::vector<MaterialView> GetMaterials();
+bool SetMaterialName(uint32_t materialId, const std::string& name);
 bool SetMaterialTexturePath(uint32_t materialId, TextureSlot slot, const std::string& path);
 bool SetMaterialSurfaceFactors(uint32_t materialId, float roughnessFactor, float metallicFactor);
 MaterialTextures ResolveMaterialTextures(uint32_t materialId, const MaterialTextures& fallback = {});

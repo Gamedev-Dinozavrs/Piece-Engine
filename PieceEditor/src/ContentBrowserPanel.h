@@ -1,5 +1,8 @@
 #pragma once
 
+#include <scene/World.h>
+
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <unordered_map>
@@ -24,11 +27,14 @@ public:
 private:
     void DrawAssetToolbar();
     void DrawUploadedTemplates();
+    void DrawMaterials();
+    void DrawMaterialCard(const MaterialView& material, bool isDefault);
     void UploadModelTemplate();
     void SpawnUploadedTemplate(size_t index);
     void RemoveUploadedTemplate(size_t index);
     void BeginRenameUploadedTemplate(size_t index);
     void ConfirmRenameUploadedTemplate();
+    void BeginRenameMaterial(uint32_t materialId, const std::string& name);
     static std::string NormalizeKey(const std::filesystem::path& path);
 
     std::filesystem::path m_AssetsDirectory;
@@ -40,6 +46,11 @@ private:
     int m_SelectedUploadedTemplate = -1;
     int m_RenameTemplateIndex = -1;
     char m_RenameBuffer[128] = {};
+    char m_CreateMaterialBuffer[128] = "Material";
+    uint32_t m_SelectedMaterialId = 0;
+    uint32_t m_RenameMaterialId = 0;
+    char m_RenameMaterialBuffer[128] = {};
+    bool m_OpenRenameMaterialPopup = false;
 };
 
 } // namespace Piece

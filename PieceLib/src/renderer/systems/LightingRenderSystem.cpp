@@ -61,9 +61,9 @@ LightingUbo BuildLightingUbo(const RendererContext& ctx) {
 
 	float minShininess = std::max(1.0f, lighting.specularShininessMin);
 	float maxShininess = std::max(minShininess, lighting.specularShininessMax);
-	ubo.specularParams = glm::vec4(lighting.specularStrength, minShininess, maxShininess, 0.0f);
-
 	EnvironmentSettings environment = World::GetEnvironmentSettings();
+	ubo.specularParams = glm::vec4(lighting.specularStrength, minShininess, maxShininess, environment.ambientStrength);
+
 	ubo.iblParams = glm::vec4(
 		environment.enabled ? environment.intensity : 0.0f,
 		environment.diffuseStrength,

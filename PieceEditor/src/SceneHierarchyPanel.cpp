@@ -254,6 +254,29 @@ void SceneHierarchyPanel::OnImGuiRender() {
             }
             ImGui::EndPopup();
         }
+
+        if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_F2) && m_SelectionContext) {
+            BeginRenameEntity(m_SelectionContext);
+        }
+    }
+
+    if (m_OpenRenamePopup) {
+        ImGui::OpenPopup("Rename Object");
+        m_OpenRenamePopup = false;
+    }
+    if (ImGui::BeginPopupModal("Rename Object", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::InputText("Name", m_RenameBuffer, sizeof(m_RenameBuffer));
+        if (ImGui::Button("Rename")) {
+            if (m_RenameEntity && m_RenameEntity.HasComponent<TagComponent>() && m_RenameBuffer[0] != '\0') {
+                m_RenameEntity.GetComponent<TagComponent>().tag = m_RenameBuffer;
+            }
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
     }
 
     ImGui::End();
@@ -263,6 +286,16 @@ void SceneHierarchyPanel::OnImGuiRender() {
         DrawProperties(m_SelectionContext);
     }
     ImGui::End();
+}
+
+void SceneHierarchyPanel::BeginRenameEntity(Entity entity) {
+    if (!entity || !entity.HasComponent<TagComponent>()) {
+        return;
+    }
+
+    m_RenameEntity = entity;
+    std::snprintf(m_RenameBuffer, sizeof(m_RenameBuffer), "%s", entity.GetComponent<TagComponent>().tag.c_str());
+    m_OpenRenamePopup = true;
 }
 
 void SceneHierarchyPanel::DrawSceneTools() {
@@ -338,6 +371,7 @@ void SceneHierarchyPanel::DrawLookDevTools() {
     ImGui::DragFloat("IBL Intensity", &environment.intensity, 0.01f, 0.0f, 8.0f);
     ImGui::DragFloat("Diffuse Strength", &environment.diffuseStrength, 0.01f, 0.0f, 4.0f);
     ImGui::DragFloat("IBL Specular Strength", &environment.specularStrength, 0.01f, 0.0f, 4.0f);
+    ImGui::DragFloat("Ambient Fill", &environment.ambientStrength, 0.01f, 0.0f, 1.0f);
     const char* aaTechniqueItems[] = {"Off", "MSAA"};
     int aaTechniqueIndex = static_cast<int>(environment.aaTechnique);
     if (ImGui::Combo("AA Technique", &aaTechniqueIndex, aaTechniqueItems, IM_ARRAYSIZE(aaTechniqueItems))) {
@@ -897,13 +931,9 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
             ImGui::Text("Custom Mesh: %s", mr.mesh ? "Yes" : "No");
 
             if (!entity.HasComponent<MaterialComponent>()) {
-                if (ImGui::Button("Add Material Component")) {
-                    uint32_t materialId = mr.materialId;
-                    if (materialId == 0) {
-                        materialId = World::CreateMaterial("Material");
-                        mr.materialId = materialId;
-                    }
-                    entity.AddComponent<MaterialComponent>(materialId);
+                ImGui::TextDisabled("No material assigned");
+                if (ImGui::Button("Assign Default Material")) {
+                    World::SetEntityMaterial(static_cast<uint32_t>(entity), World::GetDefaultMaterialId());
                 }
             }
 
@@ -917,8 +947,8 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
 
             auto materials = World::GetMaterials();
             if (materials.empty()) {
-                if (ImGui::Button("Create And Assign Material")) {
-                    const uint32_t materialId = World::CreateMaterial("Material");
+                if (ImGui::Button("Assign Default Material")) {
+                    const uint32_t materialId = World::GetDefaultMaterialId();
                     materialComponent.materialId = materialId;
                     World::SetEntityMaterial(static_cast<uint32_t>(entity), materialId);
                 }
@@ -936,7 +966,8 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
                     preview = materials[static_cast<size_t>(currentMaterialIndex)].name.c_str();
                 }
 
-                if (ImGui::BeginCombo("Material", preview)) {
+                ImGui::TextUnformatted("Material Slot");
+                if (ImGui::BeginCombo("##MaterialSlot", preview)) {
                     for (size_t i = 0; i < materials.size(); ++i) {
                         const bool selected = currentMaterialIndex == static_cast<int>(i);
                         if (ImGui::Selectable(materials[i].name.c_str(), selected)) {
@@ -946,73 +977,47 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
                     }
                     ImGui::EndCombo();
                 }
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MATERIAL_ASSET")) {
+                        if (payload->DataSize == sizeof(uint32_t)) {
+                            const uint32_t materialId = *static_cast<const uint32_t*>(payload->Data);
+                            materialComponent.materialId = materialId;
+                            World::SetEntityMaterial(static_cast<uint32_t>(entity), materialId);
+                        }
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("Drop a material card here");
 
                 if (currentMaterialIndex >= 0) {
                     MaterialView& selectedMaterial = materials[static_cast<size_t>(currentMaterialIndex)];
                     const char* imageFilter = "Image Files\0*.png;*.jpg;*.jpeg;*.bmp;*.tga\0All Files\0*.*\0";
 
-                    float roughnessFactor = selectedMaterial.surfaceFactors.roughnessFactor;
-                    float metallicFactor = selectedMaterial.surfaceFactors.metallicFactor;
-                    bool factorsChanged = false;
-                    if (ImGui::SliderFloat("Roughness Factor", &roughnessFactor, 0.0f, 1.0f, "%.2f")) {
-                        factorsChanged = true;
-                    }
-                    if (ImGui::SliderFloat("Metallic Factor", &metallicFactor, 0.0f, 1.0f, "%.2f")) {
-                        factorsChanged = true;
-                    }
-                    if (factorsChanged) {
-                        World::SetMaterialSurfaceFactors(selectedMaterial.id, roughnessFactor, metallicFactor);
-                    }
-
+                    ImGui::TextDisabled("Surface response comes from material textures.");
                     ImGui::Separator();
 
-                    ImGui::Text("Albedo: %s", GetDisplayFileName(selectedMaterial.textures.albedoPath).c_str());
-                    if (ImGui::Button("Set Albedo")) {
-                        const uint32_t materialId = selectedMaterial.id;
-                        Platform::OpenFileDialogAsync(imageFilter, [materialId](std::string path) {
-                            World::SetMaterialTexturePath(materialId, TextureSlot::Albedo, path);
-                        });
-                    }
+                    const auto drawTextureSlot = [&](const char* label, const std::string& path, TextureSlot slot) {
+                        ImGui::PushID(label);
+                        ImGui::Text("%s", label);
+                        ImGui::SameLine();
+                        ImGui::TextDisabled("%s", GetDisplayFileName(path).c_str());
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("Browse")) {
+                            const uint32_t materialId = selectedMaterial.id;
+                            Platform::OpenFileDialogAsync(imageFilter, [materialId, slot](std::string selectedPath) {
+                                World::SetMaterialTexturePath(materialId, slot, selectedPath);
+                            });
+                        }
+                        ImGui::PopID();
+                    };
 
-                    ImGui::Text("Normal: %s", GetDisplayFileName(selectedMaterial.textures.normalPath).c_str());
-                    if (ImGui::Button("Set Normal")) {
-                        const uint32_t materialId = selectedMaterial.id;
-                        Platform::OpenFileDialogAsync(imageFilter, [materialId](std::string path) {
-                            World::SetMaterialTexturePath(materialId, TextureSlot::Normal, path);
-                        });
-                    }
-
-                    ImGui::Text("Height: %s", GetDisplayFileName(selectedMaterial.textures.heightPath).c_str());
-                    if (ImGui::Button("Set Height")) {
-                        const uint32_t materialId = selectedMaterial.id;
-                        Platform::OpenFileDialogAsync(imageFilter, [materialId](std::string path) {
-                            World::SetMaterialTexturePath(materialId, TextureSlot::Height, path);
-                        });
-                    }
-
-                    ImGui::Text("Roughness: %s", GetDisplayFileName(selectedMaterial.textures.roughnessPath).c_str());
-                    if (ImGui::Button("Set Roughness")) {
-                        const uint32_t materialId = selectedMaterial.id;
-                        Platform::OpenFileDialogAsync(imageFilter, [materialId](std::string path) {
-                            World::SetMaterialTexturePath(materialId, TextureSlot::Roughness, path);
-                        });
-                    }
-
-                    ImGui::Text("Ambient Occlusion: %s", GetDisplayFileName(selectedMaterial.textures.ambientOcclusionPath).c_str());
-                    if (ImGui::Button("Set AO")) {
-                        const uint32_t materialId = selectedMaterial.id;
-                        Platform::OpenFileDialogAsync(imageFilter, [materialId](std::string path) {
-                            World::SetMaterialTexturePath(materialId, TextureSlot::AmbientOcclusion, path);
-                        });
-                    }
-
-                    ImGui::Text("Emissive: %s", GetDisplayFileName(selectedMaterial.textures.emissivePath).c_str());
-                    if (ImGui::Button("Set Emissive")) {
-                        const uint32_t materialId = selectedMaterial.id;
-                        Platform::OpenFileDialogAsync(imageFilter, [materialId](std::string path) {
-                            World::SetMaterialTexturePath(materialId, TextureSlot::Emissive, path);
-                        });
-                    }
+                    drawTextureSlot("Albedo", selectedMaterial.textures.albedoPath, TextureSlot::Albedo);
+                    drawTextureSlot("Normal", selectedMaterial.textures.normalPath, TextureSlot::Normal);
+                    drawTextureSlot("Height", selectedMaterial.textures.heightPath, TextureSlot::Height);
+                    drawTextureSlot("Roughness", selectedMaterial.textures.roughnessPath, TextureSlot::Roughness);
+                    drawTextureSlot("Ambient Occlusion", selectedMaterial.textures.ambientOcclusionPath, TextureSlot::AmbientOcclusion);
+                    drawTextureSlot("Emissive", selectedMaterial.textures.emissivePath, TextureSlot::Emissive);
                 }
             }
 

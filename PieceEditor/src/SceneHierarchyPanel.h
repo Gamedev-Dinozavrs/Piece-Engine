@@ -30,12 +30,16 @@ private:
     bool RestoreImportedChildren(Entity rootEntity);
     void DrawEntityNode(Entity entity);
     void DrawProperties(Entity entity);
+    void BeginRenameEntity(Entity entity);
 
 private:
     Ref<Scene> m_Context;
     Entity m_SelectionContext;
+    Entity m_RenameEntity;
     std::string m_ObjStatusMessage;
     bool m_ObjStatusIsError = false;
+    char m_RenameBuffer[256] = {};
+    bool m_OpenRenamePopup = false;
 };
 
 } // namespace Piece

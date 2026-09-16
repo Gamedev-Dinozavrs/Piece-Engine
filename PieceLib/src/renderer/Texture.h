@@ -9,7 +9,7 @@ namespace Piece {
 
 class Texture {
 public:
-    Texture(Device& device, const std::string& filepath);
+    Texture(Device& device, const std::string& filepath, bool isColorData = true);
     ~Texture();
 
     Texture(const Texture&) = delete;
@@ -31,7 +31,7 @@ private:
     VmaAllocation m_ImageAllocation{ nullptr };
     VkImageView m_ImageView{ VK_NULL_HANDLE };
     VkSampler m_Sampler{ VK_NULL_HANDLE };
-    VkFormat m_ImageFormat = VK_FORMAT_R8G8B8A8_SRGB;
+    VkFormat m_ImageFormat = VK_FORMAT_R8G8B8A8_UNORM;
     VkImageLayout m_ImageLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
     int m_Width = 0;

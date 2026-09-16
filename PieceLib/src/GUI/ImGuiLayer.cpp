@@ -31,6 +31,7 @@ namespace Piece {
 		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
 		ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
+		ImGuizmo::GetStyle().HatchedAxisLineThickness = 0.0f;
 		ImGuiIO& io = ImGui::GetIO();
 		
 		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;

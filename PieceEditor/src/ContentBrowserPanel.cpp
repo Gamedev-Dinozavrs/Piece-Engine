@@ -100,11 +100,59 @@ void ContentBrowserPanel::OnImGuiRender() {
     DrawAssetToolbar();
     DrawUploadedTemplates();
 
+    if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_F2) && m_SelectedMaterialId != 0) {
+        const auto materials = World::GetMaterials();
+        for (const auto& material : materials) {
+            if (material.id == m_SelectedMaterialId) {
+                BeginRenameMaterial(material.id, material.name);
+                break;
+            }
+        }
+    }
+
+    bool openCreateMaterialPopup = false;
     if (ImGui::BeginPopupContextWindow("ContentBrowserEmptySpace", ImGuiPopupFlags_NoOpenOverItems)) {
         if (ImGui::MenuItem("Create Material")) {
-            const uint32_t materialId = World::CreateMaterial("Material");
+            std::snprintf(m_CreateMaterialBuffer, sizeof(m_CreateMaterialBuffer), "%s", "Material");
+            openCreateMaterialPopup = true;
+        }
+        ImGui::EndPopup();
+    }
+
+    if (openCreateMaterialPopup) {
+        ImGui::OpenPopup("Create Material");
+    }
+    if (ImGui::BeginPopupModal("Create Material", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::InputText("Name", m_CreateMaterialBuffer, sizeof(m_CreateMaterialBuffer));
+        if (ImGui::Button("Create")) {
+            const uint32_t materialId = World::CreateMaterial(m_CreateMaterialBuffer);
             m_StatusMessage = "Created material " + std::to_string(materialId) + ".";
             m_StatusIsError = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (m_OpenRenameMaterialPopup) {
+        ImGui::OpenPopup("Rename Material");
+        m_OpenRenameMaterialPopup = false;
+    }
+    if (ImGui::BeginPopupModal("Rename Material", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::InputText("Name", m_RenameMaterialBuffer, sizeof(m_RenameMaterialBuffer));
+        if (ImGui::Button("Rename")) {
+            if (World::SetMaterialName(m_RenameMaterialId, m_RenameMaterialBuffer)) {
+                m_StatusMessage = "Renamed material.";
+                m_StatusIsError = false;
+            }
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) {
+            ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
     }
@@ -114,7 +162,7 @@ void ContentBrowserPanel::OnImGuiRender() {
 
 void ContentBrowserPanel::DrawAssetToolbar() {
     ImGui::Text("Asset Root: %s", m_AssetsDirectory.string().c_str());
-    ImGui::TextDisabled("Uploaded models appear below as placeholders.");
+    ImGui::TextDisabled("Drag a material card onto an entity's Material Slot.");
 
     if (!m_StatusMessage.empty()) {
         if (m_StatusIsError) {
@@ -130,9 +178,67 @@ void ContentBrowserPanel::DrawAssetToolbar() {
 
 }
 
-void ContentBrowserPanel::DrawUploadedTemplates() {
+void ContentBrowserPanel::DrawMaterialCard(const MaterialView& material, bool isDefault) {
+    ImGui::BeginGroup();
+
+    const ImVec2 cardSize(96.0f, 72.0f);
+    const bool selected = material.id == m_SelectedMaterialId;
+    ImGui::InvisibleButton("##MaterialIcon", cardSize);
+    if (ImGui::IsItemClicked()) {
+        m_SelectedMaterialId = material.id;
+    }
+    const ImVec2 min = ImGui::GetItemRectMin();
+    const ImVec2 max = ImGui::GetItemRectMax();
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImU32 fill = isDefault ? IM_COL32(62, 104, 146, 255) : IM_COL32(100, 78, 55, 255);
+    drawList->AddRectFilled(min, max, fill, 6.0f);
+    drawList->AddRect(min, max, selected ? IM_COL32(255, 220, 80, 255) : IM_COL32(180, 210, 230, 190), 6.0f, 0, selected ? 2.5f : 1.5f);
+    drawList->AddCircleFilled(ImVec2((min.x + max.x) * 0.5f, min.y + 25.0f), 16.0f, IM_COL32(226, 183, 112, 255));
+    drawList->AddText(ImVec2(min.x + 8.0f, min.y + 48.0f), IM_COL32(245, 245, 245, 255), "MATERIAL");
+
+    if (ImGui::BeginDragDropSource()) {
+        const uint32_t materialId = material.id;
+        ImGui::SetDragDropPayload("MATERIAL_ASSET", &materialId, sizeof(materialId));
+        ImGui::Text("Material: %s", material.name.c_str());
+        ImGui::EndDragDropSource();
+    }
+
+    ImGui::TextWrapped("%s", material.name.c_str());
+    if (isDefault) {
+        ImGui::TextDisabled("Built-in");
+    } else {
+        ImGui::TextDisabled("Material");
+    }
+    ImGui::EndGroup();
+}
+
+void ContentBrowserPanel::DrawMaterials() {
     ImGui::Separator();
-    ImGui::TextUnformatted("Uploaded Model Placeholders");
+    ImGui::TextUnformatted("Materials");
+
+    World::GetDefaultMaterialId();
+    const auto materials = World::GetMaterials();
+    if (materials.empty()) {
+        ImGui::TextDisabled("No materials yet.");
+        return;
+    }
+
+    const float tileWidth = 112.0f;
+    const int columnCount = std::max(1, static_cast<int>(ImGui::GetContentRegionAvail().x / tileWidth));
+    for (size_t i = 0; i < materials.size(); ++i) {
+        ImGui::PushID(materials[i].id);
+        DrawMaterialCard(materials[i], materials[i].id == World::GetDefaultMaterialId());
+        ImGui::PopID();
+        if (static_cast<int>((i + 1) % static_cast<size_t>(columnCount)) != 0) {
+            ImGui::SameLine();
+        }
+    }
+}
+
+void ContentBrowserPanel::DrawUploadedTemplates() {
+    DrawMaterials();
+    ImGui::Separator();
+    ImGui::TextUnformatted("Models");
 
     if (m_UploadedObjTemplates.empty()) {
         ImGui::TextDisabled("No uploaded models yet.");
@@ -145,7 +251,7 @@ void ContentBrowserPanel::DrawUploadedTemplates() {
 
         const bool selected = (m_SelectedUploadedTemplate == static_cast<int>(i));
         const std::string ext = ToLower(uploaded.sourcePath.extension().string());
-        const std::string label = "[" + (ext.empty() ? std::string("MODEL") : ToLower(ext.substr(1))) + "] " + uploaded.name;
+        const std::string label = (ext.empty() ? std::string("MODEL") : ToLower(ext.substr(1))) + "  " + uploaded.name;
         if (ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick)) {
             m_SelectedUploadedTemplate = static_cast<int>(i);
             if (ImGui::IsMouseDoubleClicked(0)) {
@@ -177,7 +283,7 @@ void ContentBrowserPanel::DrawUploadedTemplates() {
         }
 
         ImGui::SameLine();
-        ImGui::TextDisabled("spawnable placeholder");
+        ImGui::TextDisabled("Double-click to add");
         ImGui::PopID();
     }
 
@@ -350,6 +456,12 @@ void ContentBrowserPanel::ConfirmRenameUploadedTemplate() {
     m_StatusMessage = "Renamed uploaded model placeholder.";
     m_StatusIsError = false;
     m_RenameTemplateIndex = -1;
+}
+
+void ContentBrowserPanel::BeginRenameMaterial(uint32_t materialId, const std::string& name) {
+    m_RenameMaterialId = materialId;
+    std::snprintf(m_RenameMaterialBuffer, sizeof(m_RenameMaterialBuffer), "%s", name.c_str());
+    m_OpenRenameMaterialPopup = true;
 }
 
 std::string ContentBrowserPanel::NormalizeKey(const std::filesystem::path& path) {
