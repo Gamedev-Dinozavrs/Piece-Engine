@@ -25,6 +25,16 @@ void DestroyOffscreenResources(RendererContext &ctx)
             vkDestroyFramebuffer(ctx.device, frame.lightingFramebuffer, nullptr);
             frame.lightingFramebuffer = VK_NULL_HANDLE;
         }
+        if (frame.bloomExtractFramebuffer != VK_NULL_HANDLE)
+        {
+            vkDestroyFramebuffer(ctx.device, frame.bloomExtractFramebuffer, nullptr);
+            frame.bloomExtractFramebuffer = VK_NULL_HANDLE;
+        }
+        if (frame.bloomBlurFramebuffer != VK_NULL_HANDLE)
+        {
+            vkDestroyFramebuffer(ctx.device, frame.bloomBlurFramebuffer, nullptr);
+            frame.bloomBlurFramebuffer = VK_NULL_HANDLE;
+        }
         if (frame.framebuffer != VK_NULL_HANDLE)
         {
             vkDestroyFramebuffer(ctx.device, frame.framebuffer, nullptr);
@@ -89,6 +99,16 @@ void DestroyOffscreenResources(RendererContext &ctx)
         {
             vkDestroyImageView(ctx.device, frame.lightingColorImageView, nullptr);
             frame.lightingColorImageView = VK_NULL_HANDLE;
+        }
+        if (frame.bloomExtractImageView != VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(ctx.device, frame.bloomExtractImageView, nullptr);
+            frame.bloomExtractImageView = VK_NULL_HANDLE;
+        }
+        if (frame.bloomBlurImageView != VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(ctx.device, frame.bloomBlurImageView, nullptr);
+            frame.bloomBlurImageView = VK_NULL_HANDLE;
         }
         if (frame.depthImageView != VK_NULL_HANDLE)
         {
@@ -167,6 +187,18 @@ void DestroyOffscreenResources(RendererContext &ctx)
             frame.lightingColorImage = VK_NULL_HANDLE;
             frame.lightingColorAllocation = nullptr;
         }
+        if (frame.bloomExtractImage != VK_NULL_HANDLE && frame.bloomExtractAllocation != nullptr)
+        {
+            vmaDestroyImage(ctx.deviceWrapper->allocator(), frame.bloomExtractImage, frame.bloomExtractAllocation);
+            frame.bloomExtractImage = VK_NULL_HANDLE;
+            frame.bloomExtractAllocation = nullptr;
+        }
+        if (frame.bloomBlurImage != VK_NULL_HANDLE && frame.bloomBlurAllocation != nullptr)
+        {
+            vmaDestroyImage(ctx.deviceWrapper->allocator(), frame.bloomBlurImage, frame.bloomBlurAllocation);
+            frame.bloomBlurImage = VK_NULL_HANDLE;
+            frame.bloomBlurAllocation = nullptr;
+        }
         if (frame.depthImage != VK_NULL_HANDLE && frame.depthAllocation != nullptr)
         {
             vmaDestroyImage(ctx.deviceWrapper->allocator(), frame.depthImage, frame.depthAllocation);
@@ -185,6 +217,11 @@ void DestroyCompositeResources(RendererContext &ctx)
     ctx.presentDescriptorSets.clear();
     ctx.presentDescriptorPool.reset();
     ctx.presentSetLayout.reset();
+    ctx.bloomExtractDescriptorSets.clear();
+    ctx.bloomBlurDescriptorSets.clear();
+    ctx.bloomVerticalDescriptorSets.clear();
+    ctx.bloomDescriptorPool.reset();
+    ctx.bloomSetLayout.reset();
 
     if (ctx.compositeSampler != VK_NULL_HANDLE)
     {
@@ -211,6 +248,15 @@ void DestroyLightingRenderPass(RendererContext &ctx)
     }
 }
 
+void DestroyBloomRenderPass(RendererContext &ctx)
+{
+    if (ctx.bloomRenderPass != VK_NULL_HANDLE)
+    {
+        vkDestroyRenderPass(ctx.device, ctx.bloomRenderPass, nullptr);
+        ctx.bloomRenderPass = VK_NULL_HANDLE;
+    }
+}
+
 void DestroyPipelineLayouts(RendererContext &ctx)
 {
     if (ctx.geometryPipelineLayout != VK_NULL_HANDLE)
@@ -227,6 +273,11 @@ void DestroyPipelineLayouts(RendererContext &ctx)
     {
         vkDestroyPipelineLayout(ctx.device, ctx.presentPipelineLayout, nullptr);
         ctx.presentPipelineLayout = VK_NULL_HANDLE;
+    }
+    if (ctx.bloomPipelineLayout != VK_NULL_HANDLE)
+    {
+        vkDestroyPipelineLayout(ctx.device, ctx.bloomPipelineLayout, nullptr);
+        ctx.bloomPipelineLayout = VK_NULL_HANDLE;
     }
 }
 
@@ -347,6 +398,54 @@ void CreateLightingRenderPass(RendererContext &ctx)
 
     VkResult result = vkCreateRenderPass(ctx.device, &renderPassInfo, nullptr, &ctx.lightingRenderPass);
     PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create MSAA lighting render pass");
+}
+
+void CreateBloomRenderPass(RendererContext &ctx)
+{
+    VkAttachmentDescription colorAttachment{};
+    colorAttachment.format = ctx.offscreenLightingColorFormat;
+    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+    VkAttachmentReference colorReference{};
+    colorReference.attachment = 0;
+    colorReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkSubpassDescription subpass{};
+    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    subpass.colorAttachmentCount = 1;
+    subpass.pColorAttachments = &colorReference;
+
+    std::array<VkSubpassDependency, 2> dependencies{};
+    dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[0].dstSubpass = 0;
+    dependencies[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependencies[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dependencies[1].srcSubpass = 0;
+    dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
+    dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+    VkRenderPassCreateInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+    renderPassInfo.attachmentCount = 1;
+    renderPassInfo.pAttachments = &colorAttachment;
+    renderPassInfo.subpassCount = 1;
+    renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = static_cast<uint32_t>(dependencies.size());
+    renderPassInfo.pDependencies = dependencies.data();
+
+    const VkResult result = vkCreateRenderPass(ctx.device, &renderPassInfo, nullptr, &ctx.bloomRenderPass);
+    PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create bloom render pass");
 }
 
 void CreateGeometryRenderPass(RendererContext &ctx)
@@ -863,6 +962,21 @@ void CreateOffscreenResources(RendererContext &ctx)
                 frame.msaaLightingColorImageView);
         }
 
+        createColorTarget(
+            ctx.offscreenLightingColorFormat,
+            VK_SAMPLE_COUNT_1_BIT,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            frame.bloomExtractImage,
+            frame.bloomExtractAllocation,
+            frame.bloomExtractImageView);
+        createColorTarget(
+            ctx.offscreenLightingColorFormat,
+            VK_SAMPLE_COUNT_1_BIT,
+            VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+            frame.bloomBlurImage,
+            frame.bloomBlurAllocation,
+            frame.bloomBlurImageView);
+
         VkFormat depthFormat = ctx.swapChainWrapper->findDepthFormat();
         VkImageCreateInfo depthImageInfo{};
         depthImageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -957,6 +1071,7 @@ void CreateOffscreenResources(RendererContext &ctx)
             lightingFramebufferInfo.pAttachments = &lightingAttachment;
             result = vkCreateFramebuffer(ctx.device, &lightingFramebufferInfo, nullptr, &frame.lightingFramebuffer);
             PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create lighting framebuffer");
+
         }
         else
         {
@@ -969,6 +1084,20 @@ void CreateOffscreenResources(RendererContext &ctx)
             result = vkCreateFramebuffer(ctx.device, &lightingFramebufferInfo, nullptr, &frame.lightingFramebuffer);
             PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create MSAA lighting framebuffer");
         }
+
+        VkFramebufferCreateInfo bloomFramebufferInfo{};
+        bloomFramebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+        bloomFramebufferInfo.renderPass = ctx.bloomRenderPass;
+        bloomFramebufferInfo.attachmentCount = 1;
+        bloomFramebufferInfo.pAttachments = &frame.bloomExtractImageView;
+        bloomFramebufferInfo.width = ctx.swapChainExtent.width;
+        bloomFramebufferInfo.height = ctx.swapChainExtent.height;
+        bloomFramebufferInfo.layers = 1;
+        result = vkCreateFramebuffer(ctx.device, &bloomFramebufferInfo, nullptr, &frame.bloomExtractFramebuffer);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create bloom extraction framebuffer");
+        bloomFramebufferInfo.pAttachments = &frame.bloomBlurImageView;
+        result = vkCreateFramebuffer(ctx.device, &bloomFramebufferInfo, nullptr, &frame.bloomBlurFramebuffer);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create bloom blur framebuffer");
     }
 }
 
@@ -1009,12 +1138,21 @@ void CreateCompositeResources(RendererContext &ctx)
 
     ctx.presentSetLayout = DescriptorSetLayout::Builder(*ctx.deviceWrapper)
                                .addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                               .addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                                .build();
 
     ctx.presentDescriptorPool = DescriptorPool::Builder(*ctx.deviceWrapper)
                                     .setMaxSets(imageCount)
-                                    .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageCount)
+                                                                        .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageCount * 2)
                                     .build();
+
+        ctx.bloomSetLayout = DescriptorSetLayout::Builder(*ctx.deviceWrapper)
+                                                            .addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                                                            .build();
+        ctx.bloomDescriptorPool = DescriptorPool::Builder(*ctx.deviceWrapper)
+                                                                      .setMaxSets(imageCount * 3)
+                                                                      .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageCount * 3)
+                                                                    .build();
 
     const EnvironmentSettings environment = World::GetEnvironmentSettings();
     const bool useMsaaComposite =
@@ -1037,6 +1175,9 @@ void CreateCompositeResources(RendererContext &ctx)
 
     ctx.compositeDescriptorSets.assign(imageCount, VK_NULL_HANDLE);
     ctx.presentDescriptorSets.assign(imageCount, VK_NULL_HANDLE);
+    ctx.bloomExtractDescriptorSets.assign(imageCount, VK_NULL_HANDLE);
+    ctx.bloomBlurDescriptorSets.assign(imageCount, VK_NULL_HANDLE);
+    ctx.bloomVerticalDescriptorSets.assign(imageCount, VK_NULL_HANDLE);
     for (uint32_t i = 0; i < imageCount; ++i)
     {
         const bool allocated = ctx.compositeDescriptorPool->allocateDescriptor(
@@ -1101,9 +1242,47 @@ void CreateCompositeResources(RendererContext &ctx)
         lightingColorInfo.imageView = ctx.offscreenFrames[i].lightingColorImageView;
         lightingColorInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
+        VkDescriptorImageInfo presentBloomInfo{};
+        presentBloomInfo.sampler = ctx.compositeSampler;
+        presentBloomInfo.imageView = ctx.offscreenFrames[i].bloomExtractImageView;
+        presentBloomInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
         DescriptorWriter(*ctx.presentSetLayout, *ctx.presentDescriptorPool)
             .writeImage(0, &lightingColorInfo)
+            .writeImage(1, &presentBloomInfo)
             .overwrite(ctx.presentDescriptorSets[i]);
+
+        const bool extractAllocated = ctx.bloomDescriptorPool->allocateDescriptor(
+            ctx.bloomSetLayout->getDescriptorSetLayout(), ctx.bloomExtractDescriptorSets[i]);
+        const bool blurAllocated = ctx.bloomDescriptorPool->allocateDescriptor(
+            ctx.bloomSetLayout->getDescriptorSetLayout(), ctx.bloomBlurDescriptorSets[i]);
+        const bool verticalAllocated = ctx.bloomDescriptorPool->allocateDescriptor(
+            ctx.bloomSetLayout->getDescriptorSetLayout(), ctx.bloomVerticalDescriptorSets[i]);
+        PIECE_CORE_ASSERT(extractAllocated && blurAllocated && verticalAllocated, "Failed to allocate bloom descriptor sets");
+
+        VkDescriptorImageInfo bloomInputInfo{};
+        bloomInputInfo.sampler = ctx.compositeSampler;
+        bloomInputInfo.imageView = ctx.offscreenFrames[i].lightingColorImageView;
+        bloomInputInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        DescriptorWriter(*ctx.bloomSetLayout, *ctx.bloomDescriptorPool)
+            .writeImage(0, &bloomInputInfo)
+            .overwrite(ctx.bloomExtractDescriptorSets[i]);
+
+        VkDescriptorImageInfo bloomExtractInfo{};
+        bloomExtractInfo.sampler = ctx.compositeSampler;
+        bloomExtractInfo.imageView = ctx.offscreenFrames[i].bloomExtractImageView;
+        bloomExtractInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        DescriptorWriter(*ctx.bloomSetLayout, *ctx.bloomDescriptorPool)
+            .writeImage(0, &bloomExtractInfo)
+            .overwrite(ctx.bloomBlurDescriptorSets[i]);
+
+        VkDescriptorImageInfo bloomBlurInfo{};
+        bloomBlurInfo.sampler = ctx.compositeSampler;
+        bloomBlurInfo.imageView = ctx.offscreenFrames[i].bloomBlurImageView;
+        bloomBlurInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        DescriptorWriter(*ctx.bloomSetLayout, *ctx.bloomDescriptorPool)
+            .writeImage(0, &bloomBlurInfo)
+            .overwrite(ctx.bloomVerticalDescriptorSets[i]);
 
     }
 }
@@ -1164,6 +1343,32 @@ void CreateGraphicsPipeline(RendererContext& ctx) {
                 ? "lighting_composite_msaa.frag"
                 : "lighting_composite.frag"),
         lightingConfig);
+
+    PipelineConfigInfo bloomConfig{};
+    Pipeline::defaultPipelineConfigInfo(bloomConfig);
+    bloomConfig.renderPass = ctx.bloomRenderPass;
+    bloomConfig.pipelineLayout = ctx.bloomPipelineLayout;
+    bloomConfig.bindingDescriptions.clear();
+    bloomConfig.attributeDescriptions.clear();
+    bloomConfig.depthStencilInfo.depthTestEnable = VK_FALSE;
+    bloomConfig.depthStencilInfo.depthWriteEnable = VK_FALSE;
+    bloomConfig.multisampleInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    ctx.bloomExtractPipeline = CreateScope<Pipeline>(
+        *ctx.deviceWrapper,
+        *ctx.shaderLibrary->Get("lighting_composite.vert"),
+        *ctx.shaderLibrary->Get("bloom_extract.frag"),
+        bloomConfig);
+    ctx.bloomBlurPipeline = CreateScope<Pipeline>(
+        *ctx.deviceWrapper,
+        *ctx.shaderLibrary->Get("lighting_composite.vert"),
+        *ctx.shaderLibrary->Get("bloom_blur.frag"),
+        bloomConfig);
+    ctx.bloomVerticalPipeline = CreateScope<Pipeline>(
+        *ctx.deviceWrapper,
+        *ctx.shaderLibrary->Get("lighting_composite.vert"),
+        *ctx.shaderLibrary->Get("bloom_blur_vertical.frag"),
+        bloomConfig);
 
     PipelineConfigInfo presentConfig{};
     Pipeline::defaultPipelineConfigInfo(presentConfig);

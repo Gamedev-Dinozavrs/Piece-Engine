@@ -30,6 +30,7 @@ void Record(RendererContext& ctx, const FrameInfo& frameInfo) {
 	vkCmdBeginRenderPass(frameInfo.commandBuffer, &lightingPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 	CompositePass::Record(ctx, frameInfo);
 	vkCmdEndRenderPass(frameInfo.commandBuffer);
+	LightingRenderSystem::RecordBloom(ctx, frameInfo);
 
 	Pipeline& finalPipeline = *ctx.presentPipeline;
 	VkDescriptorSet finalDescriptorSet = ctx.presentDescriptorSets[frameInfo.imageIndex];

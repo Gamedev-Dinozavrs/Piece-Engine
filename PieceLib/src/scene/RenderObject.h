@@ -25,6 +25,12 @@ struct MaterialTextures {
     std::string emissivePath;
 };
 
+struct MaterialColors {
+    glm::vec3 baseColor{1.0f, 1.0f, 1.0f};
+    glm::vec3 emissiveColor{0.0f, 0.0f, 0.0f};
+    bool emissiveEnabled{false};
+};
+
 class RenderObject {
 public:
     RenderObject(Ref<Mesh> mesh, PrimitiveType primitiveType = PrimitiveType::Unknown, uint32_t objectId = 0,

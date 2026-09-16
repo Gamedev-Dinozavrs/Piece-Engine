@@ -81,6 +81,7 @@ struct MeshRendererComponent {
 
 struct MaterialComponent {
     uint32_t materialId{0};
+    MaterialColors colors{};
 
     MaterialComponent() = default;
     MaterialComponent(const MaterialComponent&) = default;

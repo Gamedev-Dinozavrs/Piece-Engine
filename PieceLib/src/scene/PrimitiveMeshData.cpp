@@ -3,6 +3,7 @@
 #include <scene/PrimitiveMeshData.h>
 
 #include <glm/gtc/constants.hpp>
+#include <array>
 #include <cmath>
 
 namespace Piece {
@@ -24,28 +25,42 @@ PrimitiveMeshData CreateQuad() {
 
 PrimitiveMeshData CreateCube() {
     PrimitiveMeshData data{};
-    data.vertices = {
-        // Front face (+Z)
-        {{-0.5f, -0.5f, 0.5f}, {1, 0, 0}, {0, 0}, glm::normalize(glm::vec3{-0.5f, -0.5f, 0.5f})},
-        {{0.5f, -0.5f, 0.5f}, {0, 1, 0}, {1, 0}, glm::normalize(glm::vec3{0.5f, -0.5f, 0.5f})},
-        {{0.5f, 0.5f, 0.5f}, {0, 0, 1}, {1, 1}, glm::normalize(glm::vec3{0.5f, 0.5f, 0.5f})},
-        {{-0.5f, 0.5f, 0.5f}, {1, 1, 0}, {0, 1}, glm::normalize(glm::vec3{-0.5f, 0.5f, 0.5f})},
+    const auto addFace = [&data](const glm::vec3& normal, const std::array<glm::vec3, 4>& positions) {
+        const uint32_t first = static_cast<uint32_t>(data.vertices.size());
+        const std::array<glm::vec2, 4> uvs = {
+            glm::vec2{0.0f, 0.0f}, glm::vec2{1.0f, 0.0f},
+            glm::vec2{1.0f, 1.0f}, glm::vec2{0.0f, 1.0f}};
+        const std::array<glm::vec3, 4> colors = {
+            glm::vec3{1.0f, 0.2f, 0.2f}, glm::vec3{0.2f, 1.0f, 0.2f},
+            glm::vec3{0.2f, 0.2f, 1.0f}, glm::vec3{1.0f, 1.0f, 0.2f}};
 
-        // Back face (-Z)
-        {{-0.5f, -0.5f, -0.5f}, {1, 0, 1}, {0, 0}, glm::normalize(glm::vec3{-0.5f, -0.5f, -0.5f})},
-        {{0.5f, -0.5f, -0.5f}, {0, 1, 1}, {1, 0}, glm::normalize(glm::vec3{0.5f, -0.5f, -0.5f})},
-        {{0.5f, 0.5f, -0.5f}, {0.5, 0.5, 0.5}, {1, 1}, glm::normalize(glm::vec3{0.5f, 0.5f, -0.5f})},
-        {{-0.5f, 0.5f, -0.5f}, {0.8, 0.2, 0.2}, {0, 1}, glm::normalize(glm::vec3{-0.5f, 0.5f, -0.5f})},
+        for (size_t i = 0; i < positions.size(); ++i) {
+            data.vertices.push_back({positions[i], colors[i], uvs[i], normal});
+        }
+
+        data.indices.insert(data.indices.end(), {
+            first, first + 1, first + 2,
+            first + 2, first + 3, first});
     };
 
-    data.indices = {
-        0, 1, 2, 2, 3, 0,
-        4, 6, 5, 4, 7, 6,
-        3, 2, 6, 6, 7, 3,
-        4, 5, 1, 1, 0, 4,
-        1, 5, 6, 6, 2, 1,
-        4, 0, 3, 3, 7, 4,
-    };
+    addFace({0.0f, 0.0f, 1.0f}, {
+        glm::vec3{-0.5f, -0.5f, 0.5f}, glm::vec3{0.5f, -0.5f, 0.5f},
+        glm::vec3{0.5f, 0.5f, 0.5f}, glm::vec3{-0.5f, 0.5f, 0.5f}});
+    addFace({0.0f, 0.0f, -1.0f}, {
+        glm::vec3{-0.5f, -0.5f, -0.5f}, glm::vec3{0.5f, -0.5f, -0.5f},
+        glm::vec3{0.5f, 0.5f, -0.5f}, glm::vec3{-0.5f, 0.5f, -0.5f}});
+    addFace({0.0f, 1.0f, 0.0f}, {
+        glm::vec3{-0.5f, 0.5f, 0.5f}, glm::vec3{0.5f, 0.5f, 0.5f},
+        glm::vec3{0.5f, 0.5f, -0.5f}, glm::vec3{-0.5f, 0.5f, -0.5f}});
+    addFace({0.0f, -1.0f, 0.0f}, {
+        glm::vec3{-0.5f, -0.5f, -0.5f}, glm::vec3{0.5f, -0.5f, -0.5f},
+        glm::vec3{0.5f, -0.5f, 0.5f}, glm::vec3{-0.5f, -0.5f, 0.5f}});
+    addFace({1.0f, 0.0f, 0.0f}, {
+        glm::vec3{0.5f, -0.5f, 0.5f}, glm::vec3{0.5f, -0.5f, -0.5f},
+        glm::vec3{0.5f, 0.5f, -0.5f}, glm::vec3{0.5f, 0.5f, 0.5f}});
+    addFace({-1.0f, 0.0f, 0.0f}, {
+        glm::vec3{-0.5f, -0.5f, -0.5f}, glm::vec3{-0.5f, -0.5f, 0.5f},
+        glm::vec3{-0.5f, 0.5f, 0.5f}, glm::vec3{-0.5f, 0.5f, -0.5f}});
 
     return data;
 }

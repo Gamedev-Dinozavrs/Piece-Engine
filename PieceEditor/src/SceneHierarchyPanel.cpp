@@ -372,6 +372,10 @@ void SceneHierarchyPanel::DrawLookDevTools() {
     ImGui::DragFloat("Diffuse Strength", &environment.diffuseStrength, 0.01f, 0.0f, 4.0f);
     ImGui::DragFloat("IBL Specular Strength", &environment.specularStrength, 0.01f, 0.0f, 4.0f);
     ImGui::DragFloat("Ambient Fill", &environment.ambientStrength, 0.01f, 0.0f, 1.0f);
+    ImGui::SeparatorText("Bloom");
+    ImGui::DragFloat("Threshold", &environment.bloomThreshold, 0.01f, 0.0f, 10.0f);
+    ImGui::DragFloat("Intensity", &environment.bloomIntensity, 0.01f, 0.0f, 5.0f);
+    ImGui::DragFloat("Radius", &environment.bloomRadius, 0.05f, 0.0f, 8.0f);
     const char* aaTechniqueItems[] = {"Off", "MSAA"};
     int aaTechniqueIndex = static_cast<int>(environment.aaTechnique);
     if (ImGui::Combo("AA Technique", &aaTechniqueIndex, aaTechniqueItems, IM_ARRAYSIZE(aaTechniqueItems))) {
@@ -455,6 +459,7 @@ bool SceneHierarchyPanel::SpawnObjFromPath(const std::filesystem::path& sourcePa
         const ImportedMaterialData& material = model.materials[i];
         const uint32_t materialId = World::CreateMaterial(material.name.empty() ? "Imported Material" : material.name);
         World::SetMaterialSurfaceFactors(materialId, material.roughnessFactor, material.metallicFactor);
+        World::SetMaterialColors(materialId, MaterialColors{material.baseColor, material.emissiveColor, material.emissiveEnabled});
         if (FileExists(material.albedoPath)) {
             World::SetMaterialTexturePath(materialId, TextureSlot::Albedo, material.albedoPath);
         }
@@ -590,6 +595,7 @@ bool SceneHierarchyPanel::MergeAllChildren(Entity rootEntity) {
         const ImportedMaterialData& material = model.materials[i];
         const uint32_t materialId = World::CreateMaterial(material.name.empty() ? "Imported Material" : material.name);
         World::SetMaterialSurfaceFactors(materialId, material.roughnessFactor, material.metallicFactor);
+        World::SetMaterialColors(materialId, MaterialColors{material.baseColor, material.emissiveColor, material.emissiveEnabled});
         if (FileExists(material.albedoPath)) {
             World::SetMaterialTexturePath(materialId, TextureSlot::Albedo, material.albedoPath);
         }
@@ -721,6 +727,7 @@ bool SceneHierarchyPanel::RestoreImportedChildren(Entity rootEntity) {
         const ImportedMaterialData& material = model.materials[i];
         const uint32_t materialId = World::CreateMaterial(material.name.empty() ? "Imported Material" : material.name);
         World::SetMaterialSurfaceFactors(materialId, material.roughnessFactor, material.metallicFactor);
+        World::SetMaterialColors(materialId, MaterialColors{material.baseColor, material.emissiveColor, material.emissiveEnabled});
         if (FileExists(material.albedoPath)) {
             World::SetMaterialTexturePath(materialId, TextureSlot::Albedo, material.albedoPath);
         }
@@ -995,6 +1002,17 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
                     const char* imageFilter = "Image Files\0*.png;*.jpg;*.jpeg;*.bmp;*.tga\0All Files\0*.*\0";
 
                     ImGui::TextDisabled("Surface response comes from material textures.");
+                    glm::vec3 baseColor = materialComponent.colors.baseColor;
+                    glm::vec3 emissiveColor = materialComponent.colors.emissiveColor;
+                    bool emissiveEnabled = materialComponent.colors.emissiveEnabled;
+                    bool colorsChanged = ImGui::ColorEdit3("Base Color", &baseColor.x);
+                    colorsChanged |= ImGui::Checkbox("Emissive Enabled", &emissiveEnabled);
+                    ImGui::BeginDisabled(!emissiveEnabled);
+                    colorsChanged |= ImGui::ColorEdit3("Emissive Color", &emissiveColor.x);
+                    ImGui::EndDisabled();
+                    if (colorsChanged) {
+                        materialComponent.colors = MaterialColors{baseColor, emissiveColor, emissiveEnabled};
+                    }
                     ImGui::Separator();
 
                     const auto drawTextureSlot = [&](const char* label, const std::string& path, TextureSlot slot) {
@@ -1017,7 +1035,6 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
                     drawTextureSlot("Height", selectedMaterial.textures.heightPath, TextureSlot::Height);
                     drawTextureSlot("Roughness", selectedMaterial.textures.roughnessPath, TextureSlot::Roughness);
                     drawTextureSlot("Ambient Occlusion", selectedMaterial.textures.ambientOcclusionPath, TextureSlot::AmbientOcclusion);
-                    drawTextureSlot("Emissive", selectedMaterial.textures.emissivePath, TextureSlot::Emissive);
                 }
             }
 

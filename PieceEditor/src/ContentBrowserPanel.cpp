@@ -375,6 +375,7 @@ void ContentBrowserPanel::SpawnUploadedTemplate(size_t index) {
         const ImportedMaterialData& material = model.materials[i];
         const uint32_t materialId = World::CreateMaterial(material.name.empty() ? "Imported Material" : material.name);
         World::SetMaterialSurfaceFactors(materialId, material.roughnessFactor, material.metallicFactor);
+        World::SetMaterialColors(materialId, MaterialColors{material.baseColor, material.emissiveColor, material.emissiveEnabled});
         if (FileExists(material.albedoPath)) {
             World::SetMaterialTexturePath(materialId, TextureSlot::Albedo, material.albedoPath);
         }

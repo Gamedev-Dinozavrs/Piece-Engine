@@ -2,6 +2,7 @@
 
 #include <scene/Mesh.h>
 
+#include <glm/glm.hpp>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,9 @@ struct ImportedMaterialData {
     std::string roughnessPath;
     std::string ambientOcclusionPath;
     std::string emissivePath;
+    glm::vec3 baseColor{1.0f};
+    glm::vec3 emissiveColor{0.0f};
+    bool emissiveEnabled{false};
     float roughnessFactor{1.0f};
     float metallicFactor{1.0f};
 };

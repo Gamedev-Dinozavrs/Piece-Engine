@@ -110,6 +110,11 @@ void Record(const RendererContext& ctx, const FrameInfo& frameInfo) {
 		const MaterialSurfaceFactors materialFactors = World::ResolveMaterialSurfaceFactors(materialId);
 		push.materialFactors.x = materialFactors.roughnessFactor;
 		push.materialFactors.y = materialFactors.metallicFactor;
+		const MaterialColors materialColors = entity.HasComponent<MaterialComponent>()
+			? entity.GetComponent<MaterialComponent>().colors
+			: World::ResolveMaterialColors(materialId);
+		push.baseColor = glm::vec4(materialColors.baseColor, 1.0f);
+		push.emissiveColor = glm::vec4(materialColors.emissiveColor, materialColors.emissiveEnabled ? 1.0f : 0.0f);
 		push.materialData.x = (meshRenderer.normalSource == NormalSource::Vertex) ? 1 : 0;
 		auto flagsIt = ctx.objectMaterialFlags.find(static_cast<uint32_t>(entityHandle));
 		push.materialData.y = (flagsIt != ctx.objectMaterialFlags.end()) ? static_cast<int>(flagsIt->second) : 0;

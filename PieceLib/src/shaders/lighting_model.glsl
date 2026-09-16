@@ -12,6 +12,7 @@ layout(set = 1, binding = 0) uniform LightingUbo {
     ivec4 pointLightCount;
     vec4 specularParams;
     vec4 iblParams; // x = intensity, y = diffuseStrength, z = specularStrength, w = maxSpecularLod
+    vec4 bloomParams; // x = threshold, y = intensity, z = radius
 } u_Lighting;
 
 // ----------------------------------------------------------------------------

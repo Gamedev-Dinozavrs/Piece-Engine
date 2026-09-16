@@ -25,6 +25,7 @@ struct MaterialRecord {
     std::string name;
     MaterialTextures textures{};
     MaterialSurfaceFactors surfaceFactors{};
+    MaterialColors colors{};
 };
 
 Ref<Scene> s_ActiveScene = nullptr;
@@ -121,7 +122,8 @@ Entity SpawnPrimitiveEntity(Scene& scene, PrimitiveType primitiveType, const std
         const uint32_t defaultMaterialId = EnsureDefaultMaterialId();
         auto& meshRenderer = entity.AddComponent<MeshRendererComponent>(primitiveType, NormalSource::Vertex);
         meshRenderer.materialId = defaultMaterialId;
-        entity.AddComponent<MaterialComponent>(defaultMaterialId);
+        auto& material = entity.AddComponent<MaterialComponent>(defaultMaterialId);
+        material.colors = ResolveMaterialColors(defaultMaterialId);
     return entity;
 }
 
@@ -269,7 +271,8 @@ uint32_t SpawnMesh(const Ref<Mesh>& mesh, const SpawnTransform& transform, const
     renderer.mesh = mesh;
     const uint32_t defaultMaterialId = EnsureDefaultMaterialId();
     renderer.materialId = defaultMaterialId;
-    entity.AddComponent<MaterialComponent>(defaultMaterialId);
+    auto& material = entity.AddComponent<MaterialComponent>(defaultMaterialId);
+    material.colors = ResolveMaterialColors(defaultMaterialId);
 
     auto& transformComponent = entity.GetComponent<TransformComponent>();
     transformComponent.position = transform.position;
@@ -418,9 +421,12 @@ bool SetEntityMaterial(uint32_t entityId, uint32_t materialId) {
         meshRenderer.materialId = materialId;
         Entity entity{handle, scene.get()};
         if (entity.HasComponent<MaterialComponent>()) {
-            entity.GetComponent<MaterialComponent>().materialId = materialId;
+            auto& material = entity.GetComponent<MaterialComponent>();
+            material.materialId = materialId;
+            material.colors = ResolveMaterialColors(materialId);
         } else {
-            entity.AddComponent<MaterialComponent>(materialId);
+            auto& material = entity.AddComponent<MaterialComponent>(materialId);
+            material.colors = ResolveMaterialColors(materialId);
         }
         return true;
     }
@@ -449,6 +455,7 @@ std::vector<MaterialView> GetMaterials() {
         view.name = material.name;
         view.textures = material.textures;
         view.surfaceFactors = material.surfaceFactors;
+        view.colors = material.colors;
         materials.push_back(std::move(view));
     }
     return materials;
@@ -465,6 +472,21 @@ bool SetMaterialName(uint32_t materialId, const std::string& name) {
         }
 
         material.name = MakeUniqueMaterialName(name, materialId);
+        return true;
+    }
+
+    return false;
+}
+
+bool SetMaterialColors(uint32_t materialId, const MaterialColors& colors) {
+    for (auto& material : s_Materials) {
+        if (material.id != materialId) {
+            continue;
+        }
+
+        material.colors.baseColor = glm::clamp(colors.baseColor, glm::vec3(0.0f), glm::vec3(1.0f));
+        material.colors.emissiveColor = glm::max(colors.emissiveColor, glm::vec3(0.0f));
+        material.colors.emissiveEnabled = colors.emissiveEnabled;
         return true;
     }
 
@@ -532,6 +554,16 @@ MaterialSurfaceFactors ResolveMaterialSurfaceFactors(uint32_t materialId, const 
     for (const auto& material : s_Materials) {
         if (material.id == materialId) {
             return material.surfaceFactors;
+        }
+    }
+
+    return fallback;
+}
+
+MaterialColors ResolveMaterialColors(uint32_t materialId, const MaterialColors& fallback) {
+    for (const auto& material : s_Materials) {
+        if (material.id == materialId) {
+            return material.colors;
         }
     }
 
@@ -641,6 +673,10 @@ void SetEnvironmentSettings(const EnvironmentSettings& settings) {
     s_EnvironmentSettings.intensity = std::max(0.0f, settings.intensity);
     s_EnvironmentSettings.diffuseStrength = std::max(0.0f, settings.diffuseStrength);
     s_EnvironmentSettings.specularStrength = std::max(0.0f, settings.specularStrength);
+    s_EnvironmentSettings.ambientStrength = std::max(0.0f, settings.ambientStrength);
+    s_EnvironmentSettings.bloomThreshold = std::max(0.0f, settings.bloomThreshold);
+    s_EnvironmentSettings.bloomIntensity = std::max(0.0f, settings.bloomIntensity);
+    s_EnvironmentSettings.bloomRadius = std::max(0.0f, settings.bloomRadius);
     s_EnvironmentSettings.aaTechnique = settings.aaTechnique;
     s_EnvironmentSettings.msaaSampleCount = settings.msaaSampleCount;
 }

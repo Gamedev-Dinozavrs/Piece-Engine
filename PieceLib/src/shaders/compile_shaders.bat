@@ -12,5 +12,8 @@ cd /d "%SHADER_DIR%"
 "%GLSLC%" -I "%SHADER_DIR%" lighting_composite.frag -o lighting_composite.frag.spv
 "%GLSLC%" -I "%SHADER_DIR%" lighting_composite_msaa.frag -o lighting_composite_msaa.frag.spv
 "%GLSLC%" -I "%SHADER_DIR%" present.frag -o present.frag.spv
+"%GLSLC%" -I "%SHADER_DIR%" bloom_extract.frag -o bloom_extract.frag.spv
+"%GLSLC%" -I "%SHADER_DIR%" bloom_blur.frag -o bloom_blur.frag.spv
+"%GLSLC%" -I "%SHADER_DIR%" bloom_blur_vertical.frag -o bloom_blur_vertical.frag.spv
 
 endlocal

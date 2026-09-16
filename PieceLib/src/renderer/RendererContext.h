@@ -84,8 +84,18 @@ struct OffscreenFrameResources {
     VmaAllocation lightingColorAllocation{nullptr};
     VkImageView lightingColorImageView{VK_NULL_HANDLE};
 
+    VkImage bloomExtractImage{VK_NULL_HANDLE};
+    VmaAllocation bloomExtractAllocation{nullptr};
+    VkImageView bloomExtractImageView{VK_NULL_HANDLE};
+
+    VkImage bloomBlurImage{VK_NULL_HANDLE};
+    VmaAllocation bloomBlurAllocation{nullptr};
+    VkImageView bloomBlurImageView{VK_NULL_HANDLE};
+
     VkFramebuffer framebuffer{VK_NULL_HANDLE};
     VkFramebuffer lightingFramebuffer{VK_NULL_HANDLE};
+    VkFramebuffer bloomExtractFramebuffer{VK_NULL_HANDLE};
+    VkFramebuffer bloomBlurFramebuffer{VK_NULL_HANDLE};
 };
 
 struct RendererContext {
@@ -97,6 +107,9 @@ struct RendererContext {
     Scope<SwapChain> swapChainWrapper;
     Scope<Pipeline> geometryPipeline;
     Scope<Pipeline> lightingPipeline;
+    Scope<Pipeline> bloomExtractPipeline;
+    Scope<Pipeline> bloomBlurPipeline;
+    Scope<Pipeline> bloomVerticalPipeline;
     Scope<Pipeline> presentPipeline;
 
     Ref<Mesh> quadMesh;
@@ -113,6 +126,8 @@ struct RendererContext {
     Scope<DescriptorPool> compositeDescriptorPool;
     Scope<DescriptorSetLayout> presentSetLayout;
     Scope<DescriptorPool> presentDescriptorPool;
+    Scope<DescriptorSetLayout> bloomSetLayout;
+    Scope<DescriptorPool> bloomDescriptorPool;
     std::unordered_map<std::string, Ref<Texture>> textureCache;
     std::unordered_map<uint32_t, VkDescriptorSet> objectMaterialDescriptors;
     std::unordered_map<uint32_t, std::string> objectBoundMaterialSignature;
@@ -122,6 +137,9 @@ struct RendererContext {
     std::vector<VkDescriptorSet> globalDescriptorSets;
     std::vector<VkDescriptorSet> compositeDescriptorSets;
     std::vector<VkDescriptorSet> presentDescriptorSets;
+    std::vector<VkDescriptorSet> bloomExtractDescriptorSets;
+    std::vector<VkDescriptorSet> bloomBlurDescriptorSets;
+    std::vector<VkDescriptorSet> bloomVerticalDescriptorSets;
 
     Scope<ShaderLibrary> shaderLibrary;
 
@@ -136,6 +154,7 @@ struct RendererContext {
     VkSampleCountFlagBits msaaSamples{VK_SAMPLE_COUNT_1_BIT};
     VkRenderPass presentRenderPass{VK_NULL_HANDLE};
     VkRenderPass lightingRenderPass{VK_NULL_HANDLE};
+    VkRenderPass bloomRenderPass{VK_NULL_HANDLE};
     VkRenderPass geometryRenderPass{VK_NULL_HANDLE};
     VkSampler compositeSampler{VK_NULL_HANDLE};
     VkFormat offscreenWorldPosRoughnessFormat{VK_FORMAT_R16G16B16A16_SFLOAT};
@@ -148,6 +167,7 @@ struct RendererContext {
     VkPipelineLayout geometryPipelineLayout{VK_NULL_HANDLE};
     VkPipelineLayout lightingPipelineLayout{VK_NULL_HANDLE};
     VkPipelineLayout presentPipelineLayout{VK_NULL_HANDLE};
+    VkPipelineLayout bloomPipelineLayout{VK_NULL_HANDLE};
 
     std::vector<FrameResources> frameResources;
     std::vector<VkFence> imagesInFlight;

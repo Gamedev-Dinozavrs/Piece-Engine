@@ -395,6 +395,7 @@ namespace Piece
 
         RendererInternals::CreateGeometryRenderPass(ctx);
         RendererInternals::CreateLightingRenderPass(ctx);
+        RendererInternals::CreateBloomRenderPass(ctx);
         RendererInternals::CreateOffscreenResources(ctx);
         RendererInternals::CreateCompositeResources(ctx);
         EnsureCompositeEnvironmentDescriptors(ctx);
@@ -427,6 +428,16 @@ namespace Piece
         result = vkCreatePipelineLayout(ctx.device, &lightingLayoutInfo, nullptr, &ctx.presentPipelineLayout);
         PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create present pipeline layout");
 
+        VkDescriptorSetLayout bloomSetLayouts[] = {
+            ctx.bloomSetLayout->getDescriptorSetLayout(),
+            ctx.globalSetLayout->getDescriptorSetLayout()};
+        VkPipelineLayoutCreateInfo bloomLayoutInfo{};
+        bloomLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        bloomLayoutInfo.setLayoutCount = 2;
+        bloomLayoutInfo.pSetLayouts = bloomSetLayouts;
+        result = vkCreatePipelineLayout(ctx.device, &bloomLayoutInfo, nullptr, &ctx.bloomPipelineLayout);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create bloom pipeline layout");
+
         const PrimitiveMeshData quadMeshData = PrimitiveMeshDataFactory::CreateQuad();
         ctx.quadMesh = CreateRef<Mesh>(*ctx.deviceWrapper, quadMeshData.vertices, quadMeshData.indices);
 
@@ -450,6 +461,9 @@ namespace Piece
         ctx.shaderLibrary->Load("lighting_composite.frag", PIECE_SHADER_DIR "/lighting_composite.frag.spv", Shader::Stage::Fragment);
         ctx.shaderLibrary->Load("lighting_composite_msaa.frag", PIECE_SHADER_DIR "/lighting_composite_msaa.frag.spv", Shader::Stage::Fragment);
         ctx.shaderLibrary->Load("present.frag", PIECE_SHADER_DIR "/present.frag.spv", Shader::Stage::Fragment);
+        ctx.shaderLibrary->Load("bloom_extract.frag", PIECE_SHADER_DIR "/bloom_extract.frag.spv", Shader::Stage::Fragment);
+        ctx.shaderLibrary->Load("bloom_blur.frag", PIECE_SHADER_DIR "/bloom_blur.frag.spv", Shader::Stage::Fragment);
+        ctx.shaderLibrary->Load("bloom_blur_vertical.frag", PIECE_SHADER_DIR "/bloom_blur_vertical.frag.spv", Shader::Stage::Fragment);
 
         RendererInternals::CreateGraphicsPipeline(ctx);
         // command pool is created by Device; get it
@@ -490,8 +504,12 @@ namespace Piece
 
         ctx.geometryPipeline.reset();
         ctx.lightingPipeline.reset();
+        ctx.bloomExtractPipeline.reset();
+        ctx.bloomBlurPipeline.reset();
+        ctx.bloomVerticalPipeline.reset();
         ctx.presentPipeline.reset();
         RendererInternals::DestroyPipelineLayouts(ctx);
+        RendererInternals::DestroyBloomRenderPass(ctx);
         RendererInternals::DestroyLightingRenderPass(ctx);
 
         CleanupSwapChain();
@@ -954,10 +972,14 @@ namespace Piece
 
         ctx.geometryPipeline.reset();
         ctx.lightingPipeline.reset();
+        ctx.bloomExtractPipeline.reset();
+        ctx.bloomBlurPipeline.reset();
+        ctx.bloomVerticalPipeline.reset();
         ctx.presentPipeline.reset();
         RendererInternals::DestroyPipelineLayouts(ctx);
         RendererInternals::DestroyCompositeResources(ctx);
         RendererInternals::DestroyOffscreenResources(ctx);
+        RendererInternals::DestroyBloomRenderPass(ctx);
         RendererInternals::DestroyLightingRenderPass(ctx);
         RendererInternals::DestroyGeometryRenderPass(ctx);
 
@@ -991,6 +1013,7 @@ namespace Piece
 
         RendererInternals::CreateGeometryRenderPass(ctx);
     RendererInternals::CreateLightingRenderPass(ctx);
+        RendererInternals::CreateBloomRenderPass(ctx);
         RendererInternals::CreateOffscreenResources(ctx);
         RendererInternals::CreateCompositeResources(ctx);
         EnsureCompositeEnvironmentDescriptors(ctx);
@@ -1029,6 +1052,16 @@ namespace Piece
         lightingLayoutInfo.pSetLayouts = presentSetLayouts;
         result = vkCreatePipelineLayout(ctx.device, &lightingLayoutInfo, nullptr, &ctx.presentPipelineLayout);
         PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to recreate present pipeline layout");
+
+        VkDescriptorSetLayout bloomSetLayouts[] = {
+            ctx.bloomSetLayout->getDescriptorSetLayout(),
+            ctx.globalSetLayout->getDescriptorSetLayout()};
+        VkPipelineLayoutCreateInfo bloomLayoutInfo{};
+        bloomLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        bloomLayoutInfo.setLayoutCount = 2;
+        bloomLayoutInfo.pSetLayouts = bloomSetLayouts;
+        result = vkCreatePipelineLayout(ctx.device, &bloomLayoutInfo, nullptr, &ctx.bloomPipelineLayout);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to recreate bloom pipeline layout");
 
         RendererInternals::CreateGraphicsPipeline(ctx);
         CreateCommandBuffers();

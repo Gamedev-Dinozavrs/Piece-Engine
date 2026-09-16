@@ -64,6 +64,9 @@ struct EnvironmentSettings {
     float diffuseStrength{1.0f};
     float specularStrength{1.0f};
     float ambientStrength{0.08f};
+    float bloomThreshold{0.8f};
+    float bloomIntensity{0.35f};
+    float bloomRadius{2.0f};
     AATechnique aaTechnique{AATechnique::MSAA};
     uint32_t msaaSampleCount{4};
 };
@@ -75,7 +78,7 @@ struct SpawnTransform {
 };
 
 struct MaterialSurfaceFactors {
-    float roughnessFactor{1.0f};
+    float roughnessFactor{0.5f};
     float metallicFactor{0.0f};
 };
 
@@ -84,6 +87,7 @@ struct MaterialView {
     std::string name;
     MaterialTextures textures{};
     MaterialSurfaceFactors surfaceFactors{};
+    MaterialColors colors{};
 };
 
 struct RenderEntityView {
@@ -116,10 +120,12 @@ uint32_t CreateMaterial(const std::string& name = "Material");
 uint32_t GetDefaultMaterialId();
 std::vector<MaterialView> GetMaterials();
 bool SetMaterialName(uint32_t materialId, const std::string& name);
+bool SetMaterialColors(uint32_t materialId, const MaterialColors& colors);
 bool SetMaterialTexturePath(uint32_t materialId, TextureSlot slot, const std::string& path);
 bool SetMaterialSurfaceFactors(uint32_t materialId, float roughnessFactor, float metallicFactor);
 MaterialTextures ResolveMaterialTextures(uint32_t materialId, const MaterialTextures& fallback = {});
 MaterialSurfaceFactors ResolveMaterialSurfaceFactors(uint32_t materialId, const MaterialSurfaceFactors& fallback = {});
+MaterialColors ResolveMaterialColors(uint32_t materialId, const MaterialColors& fallback = {});
 
 LightingSettings GetLightingSettings();
 void SetLightingSettings(const LightingSettings& settings);

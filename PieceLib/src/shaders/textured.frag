@@ -16,6 +16,8 @@ layout(push_constant) uniform PushConstants {
     mat4 mvp;
     mat4 model;
     vec4 materialFactors;
+    vec4 baseColor;
+    vec4 emissiveColor;
     ivec4 materialData;
 } pushConstants;
 
@@ -72,6 +74,7 @@ vec3 ComputeGeometryNormal(vec3 worldPos) {
 
 void main() {
     MaterialSample material = SampleMaterial(fragUV);
+    material.albedo.rgb *= pushConstants.baseColor.rgb;
     material.roughness = clamp(material.roughness * pushConstants.materialFactors.x, 0.0, 1.0);
     material.metallic = clamp(material.metallic * pushConstants.materialFactors.y, 0.0, 1.0);
 
@@ -93,8 +96,8 @@ void main() {
     outWorldPosRoughness = vec4(fragWorldPos, clamp(material.roughness, 0.0, 1.0));
     outAlbedoAo = vec4(material.albedo.rgb, clamp(material.ao, 0.0, 1.0));
     outNormalAo = vec4(normal * 0.5 + 0.5, clamp(material.metallic, 0.0, 1.0));
-    vec3 emissive = ((fragMaterialFlags & MATERIAL_FLAG_HAS_EMISSIVE_MAP) != 0)
-        ? material.emissive
+    vec3 emissive = (pushConstants.emissiveColor.a > 0.5)
+        ? material.emissive * pushConstants.emissiveColor.rgb
         : vec3(0.0);
     outEmissive = vec4(emissive, 1.0);
     outEntityId = uvec2(

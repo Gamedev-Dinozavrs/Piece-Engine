@@ -1,6 +1,7 @@
 #pragma once
 
 #include <scene/World.h>
+#include <renderer/FrameInfo.h>
 
 namespace Piece {
 
@@ -19,6 +20,9 @@ void RecordComposite(
     VkPipelineLayout pipelineLayout,
     VkDescriptorSet compositeDescriptorSet,
     VkDescriptorSet globalDescriptorSet);
+void RecordBloom(
+    RendererContext& ctx,
+    const FrameInfo& frameInfo);
 void RecordPresent(
     VkCommandBuffer commandBuffer,
     VkExtent2D extent,

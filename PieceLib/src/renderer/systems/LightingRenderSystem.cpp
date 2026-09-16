@@ -33,6 +33,7 @@ struct LightingUbo {
 	glm::ivec4 pointLightCount{0, 0, 0, 0};
 	glm::vec4 specularParams{1.0f, 8.0f, 128.0f, 0.0f};
 	glm::vec4 iblParams{0.0f, 1.0f, 1.0f, 8.0f};
+	glm::vec4 bloomParams{0.8f, 0.35f, 2.0f, 0.0f};
 };
 
 LightingUbo BuildLightingUbo(const RendererContext& ctx) {
@@ -69,6 +70,11 @@ LightingUbo BuildLightingUbo(const RendererContext& ctx) {
 		environment.diffuseStrength,
 		environment.specularStrength,
 		8.0f);
+	ubo.bloomParams = glm::vec4(
+		std::max(environment.bloomThreshold, 0.0f),
+		std::max(environment.bloomIntensity, 0.0f),
+		std::max(environment.bloomRadius, 0.0f),
+		0.0f);
 
 	return ubo;
 }
@@ -201,6 +207,49 @@ void RecordPresent(
 		nullptr);
 
 	vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+}
+
+void RecordBloom(RendererContext& ctx, const FrameInfo& frameInfo) {
+	VkClearValue clearValue{};
+	clearValue.color = {{0.0f, 0.0f, 0.0f, 1.0f}};
+	const std::array<VkFramebuffer, 3> framebuffers = {
+		ctx.offscreenFrames[frameInfo.imageIndex].bloomExtractFramebuffer,
+		ctx.offscreenFrames[frameInfo.imageIndex].bloomBlurFramebuffer,
+		ctx.offscreenFrames[frameInfo.imageIndex].bloomExtractFramebuffer};
+	const std::array<VkDescriptorSet, 3> descriptors = {
+		ctx.bloomExtractDescriptorSets[frameInfo.imageIndex],
+		ctx.bloomBlurDescriptorSets[frameInfo.imageIndex],
+		ctx.bloomVerticalDescriptorSets[frameInfo.imageIndex]};
+	const std::array<Pipeline*, 3> pipelines = {
+		ctx.bloomExtractPipeline.get(),
+		ctx.bloomBlurPipeline.get(),
+		ctx.bloomVerticalPipeline.get()};
+
+	for (size_t pass = 0; pass < framebuffers.size(); ++pass) {
+		VkRenderPassBeginInfo beginInfo{};
+		beginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+		beginInfo.renderPass = ctx.bloomRenderPass;
+		beginInfo.framebuffer = framebuffers[pass];
+		beginInfo.renderArea.extent = frameInfo.swapChainExtent;
+		beginInfo.clearValueCount = 1;
+		beginInfo.pClearValues = &clearValue;
+		vkCmdBeginRenderPass(frameInfo.commandBuffer, &beginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+		pipelines[pass]->bind(frameInfo.commandBuffer);
+		VkViewport viewport{};
+		viewport.width = static_cast<float>(frameInfo.swapChainExtent.width);
+		viewport.height = static_cast<float>(frameInfo.swapChainExtent.height);
+		viewport.maxDepth = 1.0f;
+		vkCmdSetViewport(frameInfo.commandBuffer, 0, 1, &viewport);
+		VkRect2D scissor{};
+		scissor.extent = frameInfo.swapChainExtent;
+		vkCmdSetScissor(frameInfo.commandBuffer, 0, 1, &scissor);
+		std::array<VkDescriptorSet, 2> sets = {descriptors[pass], frameInfo.globalDescriptorSet};
+		vkCmdBindDescriptorSets(frameInfo.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			ctx.bloomPipelineLayout, 0, static_cast<uint32_t>(sets.size()), sets.data(), 0, nullptr);
+		vkCmdDraw(frameInfo.commandBuffer, 3, 1, 0, 0);
+		vkCmdEndRenderPass(frameInfo.commandBuffer);
+	}
 }
 
 LightingSettings GetSettings() {
