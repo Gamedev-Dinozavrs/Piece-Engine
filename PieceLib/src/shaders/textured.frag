@@ -9,8 +9,9 @@ layout(location = 4) flat in int fragMaterialFlags;
 layout(set = 0, binding = 0) uniform sampler2D u_Albedo;
 layout(set = 0, binding = 1) uniform sampler2D u_Normal;
 layout(set = 0, binding = 2) uniform sampler2D u_Roughness;
-layout(set = 0, binding = 3) uniform sampler2D u_AO;
-layout(set = 0, binding = 4) uniform sampler2D u_Emissive;
+layout(set = 0, binding = 3) uniform sampler2D u_Metallic;
+layout(set = 0, binding = 4) uniform sampler2D u_AO;
+layout(set = 0, binding = 5) uniform sampler2D u_Emissive;
 
 layout(push_constant) uniform PushConstants {
     mat4 mvp;
@@ -34,6 +35,7 @@ layout(location = 5) out vec4 outBloomParams;
 
 const int MATERIAL_FLAG_HAS_NORMAL_MAP = 1 << 0;
 const int MATERIAL_FLAG_HAS_EMISSIVE_MAP = 1 << 1;
+const int MATERIAL_FLAG_HAS_METALLIC_MAP = 1 << 2;
 
 vec3 ComputeTangentSpaceNormal(vec3 baseNormal, vec3 worldPos, vec2 uv, vec3 encodedNormal) {
     vec3 tangentNormal = encodedNormal * 2.0 - 1.0;
@@ -76,7 +78,7 @@ vec3 ComputeGeometryNormal(vec3 worldPos) {
 }
 
 void main() {
-    MaterialSample material = SampleMaterial(fragUV);
+    MaterialSample material = SampleMaterial(fragUV, (fragMaterialFlags & MATERIAL_FLAG_HAS_METALLIC_MAP) != 0, u_Metallic);
     material.albedo.rgb *= pushConstants.baseColor.rgb;
     material.roughness = clamp(material.roughness * pushConstants.materialFactors.x, 0.0, 1.0);
     material.metallic = clamp(material.metallic * pushConstants.materialFactors.y, 0.0, 1.0);

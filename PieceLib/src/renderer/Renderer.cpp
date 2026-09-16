@@ -39,7 +39,7 @@ namespace Piece
 
         std::string MakeMaterialSignature(const MaterialTextures &material)
         {
-            return material.albedoPath + "|" + material.normalPath + "|" + material.roughnessPath + "|" + material.ambientOcclusionPath + "|" + material.emissivePath;
+            return material.albedoPath + "|" + material.normalPath + "|" + material.roughnessPath + "|" + material.metallicPath + "|" + material.ambientOcclusionPath + "|" + material.emissivePath;
         }
 
         std::string MakeEnvironmentSignature(const EnvironmentSettings& environment)
@@ -163,6 +163,7 @@ namespace Piece
             auto albedoTexture = GetOrCreateTexture(ctx, resolvedMaterial.albedoPath);
             auto normalTexture = GetOrCreateTexture(ctx, resolvedMaterial.normalPath, false);
             auto roughnessTexture = GetOrCreateTexture(ctx, resolvedMaterial.roughnessPath, false);
+            auto metallicTexture = GetOrCreateTexture(ctx, resolvedMaterial.metallicPath, false);
             auto aoTexture = GetOrCreateTexture(ctx, resolvedMaterial.ambientOcclusionPath, false);
             auto emissiveTexture = GetOrCreateTexture(ctx, resolvedMaterial.emissivePath);
 
@@ -181,6 +182,11 @@ namespace Piece
             roughnessImageInfo.imageView = roughnessTexture->getImageView();
             roughnessImageInfo.imageLayout = roughnessTexture->getImageLayout();
 
+            VkDescriptorImageInfo metallicImageInfo{};
+            metallicImageInfo.sampler = metallicTexture->getSampler();
+            metallicImageInfo.imageView = metallicTexture->getImageView();
+            metallicImageInfo.imageLayout = metallicTexture->getImageLayout();
+
             VkDescriptorImageInfo aoImageInfo{};
             aoImageInfo.sampler = aoTexture->getSampler();
             aoImageInfo.imageView = aoTexture->getImageView();
@@ -195,13 +201,17 @@ namespace Piece
             writer.writeImage(0, &albedoImageInfo);
             writer.writeImage(1, &normalImageInfo);
             writer.writeImage(2, &roughnessImageInfo);
-            writer.writeImage(3, &aoImageInfo);
-            writer.writeImage(4, &emissiveImageInfo);
+            writer.writeImage(3, &metallicImageInfo);
+            writer.writeImage(4, &aoImageInfo);
+            writer.writeImage(5, &emissiveImageInfo);
             writer.overwrite(ctx.objectMaterialDescriptors[objectId]);
 
             uint32_t materialFlags = 0;
             if (!resolvedMaterial.normalPath.empty()) {
                 materialFlags |= kMaterialFlagHasNormalMap;
+            }
+            if (!resolvedMaterial.metallicPath.empty()) {
+                materialFlags |= 1u << 2;
             }
             if (!resolvedMaterial.emissivePath.empty()) {
                 materialFlags |= kMaterialFlagHasEmissiveMap;
@@ -383,13 +393,14 @@ namespace Piece
                                     .addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                                     .addBinding(3, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                                     .addBinding(4, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                                    .addBinding(5, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                                     .build();
 
         LightingRenderSystem::Initialize(ctx);
 
         ctx.materialDescriptorPool = DescriptorPool::Builder(*ctx.deviceWrapper)
                                          .setMaxSets(2048)
-                                         .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2048 * 5)
+                                         .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2048 * 6)
                                          .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT)
                                          .build();
 

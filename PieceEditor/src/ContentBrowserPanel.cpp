@@ -173,6 +173,51 @@ void ContentBrowserPanel::DrawAssetToolbar() {
         } else {
             ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.4f, 1.0f), "%s", m_StatusMessage.c_str());
         }
+
+        if (ImGui::CollapsingHeader("Environment Lighting")) {
+            EnvironmentSettings environment = World::GetEnvironmentSettings();
+            ImGui::Checkbox("Enabled", &environment.enabled);
+            ImGui::DragFloat("Intensity", &environment.intensity, 0.01f, 0.0f, 8.0f);
+            ImGui::DragFloat("Diffuse Strength", &environment.diffuseStrength, 0.01f, 0.0f, 4.0f);
+            ImGui::DragFloat("Specular Strength", &environment.specularStrength, 0.01f, 0.0f, 4.0f);
+            ImGui::Text("Diffuse: %s", GetDisplayFileName(environment.diffuseMapPath).c_str());
+            if (ImGui::SmallButton("Browse##DiffuseEnvironment")) {
+                Platform::OpenFileDialogAsync(
+                    "Environment Files\0*.hdr;*.png;*.jpg;*.jpeg\0All Files\0*.*\0",
+                    [](std::string path) {
+                        if (path.empty()) {
+                            return;
+                        }
+                        EnvironmentSettings updated = World::GetEnvironmentSettings();
+                        updated.diffuseMapPath = path;
+                        updated.enabled = true;
+                        World::SetEnvironmentSettings(updated);
+                    });
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Clear##DiffuseEnvironment")) {
+                environment.diffuseMapPath.clear();
+            }
+            ImGui::Text("Specular: %s", GetDisplayFileName(environment.specularMapPath).c_str());
+            if (ImGui::SmallButton("Browse##SpecularEnvironment")) {
+                Platform::OpenFileDialogAsync(
+                    "Environment Files\0*.hdr;*.png;*.jpg;*.jpeg\0All Files\0*.*\0",
+                    [](std::string path) {
+                        if (path.empty()) {
+                            return;
+                        }
+                        EnvironmentSettings updated = World::GetEnvironmentSettings();
+                        updated.specularMapPath = path;
+                        updated.enabled = true;
+                        World::SetEnvironmentSettings(updated);
+                    });
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Clear##SpecularEnvironment")) {
+                environment.specularMapPath.clear();
+            }
+            World::SetEnvironmentSettings(environment);
+        }
     }
 
     if (ImGui::Button("Upload Model Placeholder")) {

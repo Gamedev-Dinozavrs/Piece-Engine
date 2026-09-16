@@ -21,6 +21,7 @@ struct MaterialTextures {
     std::string normalPath;
     std::string heightPath;
     std::string roughnessPath;
+    std::string metallicPath;
     std::string ambientOcclusionPath;
     std::string emissivePath;
 };

@@ -847,11 +847,17 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
 
                 if (currentMaterialIndex >= 0) {
                     MaterialView& selectedMaterial = materials[static_cast<size_t>(currentMaterialIndex)];
-                    const char* imageFilter = "Image Files\0*.png;*.jpg;*.jpeg;*.bmp;*.tga\0All Files\0*.*\0";
+                    const char* imageFilter = "Image Files\0*.png;*.jpg;*.jpeg;*.bmp;*.tga;*.psd\0All Files\0*.*\0";
 
                     ImGui::TextDisabled("Surface response comes from material textures.");
                     glm::vec3 baseColor = materialComponent.colors.baseColor;
                     glm::vec3 emissiveColor = materialComponent.colors.emissiveColor;
+                    float roughnessFactor = selectedMaterial.surfaceFactors.roughnessFactor;
+                    float metallicFactor = selectedMaterial.surfaceFactors.metallicFactor;
+                    if (m_SurfaceFactorMaterialId != selectedMaterial.id) {
+                        m_SurfaceFactorMaterialId = selectedMaterial.id;
+                        m_EditSurfaceFactors = false;
+                    }
                     bool emissiveEnabled = materialComponent.colors.emissiveEnabled;
                     bool hdrBloomEnabled = materialComponent.colors.hdrBloomEnabled;
                     bool emissiveBloomEnabled = materialComponent.colors.emissiveBloomEnabled;
@@ -864,6 +870,15 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
                     colorsChanged |= ImGui::DragFloat("Bloom Threshold", &bloomThreshold, 0.01f, 0.0f, 10.0f);
                     colorsChanged |= ImGui::DragFloat("Bloom Intensity", &bloomIntensity, 0.01f, 0.0f, 5.0f);
                     colorsChanged |= ImGui::DragFloat("Bloom Radius", &bloomRadius, 0.05f, 0.0f, 8.0f);
+                    ImGui::Checkbox("Edit Surface Factors", &m_EditSurfaceFactors);
+                    if (m_EditSurfaceFactors) {
+                        if (ImGui::DragFloat("Roughness Factor", &roughnessFactor, 0.01f, 0.0f, 1.0f)) {
+                            World::SetMaterialSurfaceFactors(selectedMaterial.id, roughnessFactor, metallicFactor);
+                        }
+                        if (ImGui::DragFloat("Metallic Factor", &metallicFactor, 0.01f, 0.0f, 1.0f)) {
+                            World::SetMaterialSurfaceFactors(selectedMaterial.id, roughnessFactor, metallicFactor);
+                        }
+                    }
                     if (emissiveEnabled) {
                         colorsChanged |= ImGui::Checkbox("Emissive Bloom Enabled", &emissiveBloomEnabled);
                         colorsChanged |= ImGui::ColorEdit3("Emissive Color", &emissiveColor.x);
@@ -891,6 +906,10 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
                             const uint32_t materialId = selectedMaterial.id;
                             Platform::OpenFileDialogAsync(imageFilter, [materialId, slot](std::string selectedPath) {
                                 World::SetMaterialTexturePath(materialId, slot, selectedPath);
+                                if (slot == TextureSlot::Metallic) {
+                                    const MaterialSurfaceFactors factors = World::ResolveMaterialSurfaceFactors(materialId);
+                                    World::SetMaterialSurfaceFactors(materialId, factors.roughnessFactor, 1.0f);
+                                }
                             });
                         }
                         ImGui::PopID();
@@ -900,6 +919,7 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
                     drawTextureSlot("Normal", selectedMaterial.textures.normalPath, TextureSlot::Normal);
                     drawTextureSlot("Height", selectedMaterial.textures.heightPath, TextureSlot::Height);
                     drawTextureSlot("Roughness", selectedMaterial.textures.roughnessPath, TextureSlot::Roughness);
+                    drawTextureSlot("Metallic", selectedMaterial.textures.metallicPath, TextureSlot::Metallic);
                     drawTextureSlot("Ambient Occlusion", selectedMaterial.textures.ambientOcclusionPath, TextureSlot::AmbientOcclusion);
                 }
             }

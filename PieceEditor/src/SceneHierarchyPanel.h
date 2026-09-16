@@ -36,6 +36,8 @@ private:
     Entity m_RenameEntity;
     std::string m_ObjStatusMessage;
     bool m_ObjStatusIsError = false;
+    uint32_t m_SurfaceFactorMaterialId = 0;
+    bool m_EditSurfaceFactors = false;
     char m_RenameBuffer[256] = {};
     bool m_OpenRenamePopup = false;
 };

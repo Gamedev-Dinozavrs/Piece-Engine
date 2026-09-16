@@ -23,6 +23,7 @@ enum class TextureSlot {
     Normal,
     Height,
     Roughness,
+    Metallic,
     AmbientOcclusion,
     Emissive
 };

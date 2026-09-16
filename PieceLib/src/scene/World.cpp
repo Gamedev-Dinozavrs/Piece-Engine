@@ -514,6 +514,9 @@ bool SetMaterialTexturePath(uint32_t materialId, TextureSlot slot, const std::st
         case TextureSlot::Roughness:
             material.textures.roughnessPath = path;
             return true;
+        case TextureSlot::Metallic:
+            material.textures.metallicPath = path;
+            return true;
         case TextureSlot::AmbientOcclusion:
             material.textures.ambientOcclusionPath = path;
             return true;
