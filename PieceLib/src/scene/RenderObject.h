@@ -29,6 +29,11 @@ struct MaterialColors {
     glm::vec3 baseColor{1.0f, 1.0f, 1.0f};
     glm::vec3 emissiveColor{0.0f, 0.0f, 0.0f};
     bool emissiveEnabled{false};
+    bool hdrBloomEnabled{false};
+    bool emissiveBloomEnabled{true};
+    float bloomThreshold{0.8f};
+    float bloomIntensity{0.35f};
+    float bloomRadius{2.0f};
 };
 
 class RenderObject {

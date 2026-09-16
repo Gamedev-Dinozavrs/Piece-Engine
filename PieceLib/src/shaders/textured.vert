@@ -17,6 +17,8 @@ layout(push_constant) uniform PushConstants {
     vec4 materialFactors;
     vec4 baseColor;
     vec4 emissiveColor;
+    vec4 bloomParams;
+    vec4 bloomFlags;
     ivec4 materialData;
 } pushConstants;
 

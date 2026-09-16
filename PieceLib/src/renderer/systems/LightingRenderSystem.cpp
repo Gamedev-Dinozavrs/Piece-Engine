@@ -33,7 +33,6 @@ struct LightingUbo {
 	glm::ivec4 pointLightCount{0, 0, 0, 0};
 	glm::vec4 specularParams{1.0f, 8.0f, 128.0f, 0.0f};
 	glm::vec4 iblParams{0.0f, 1.0f, 1.0f, 8.0f};
-	glm::vec4 bloomParams{0.8f, 0.35f, 2.0f, 0.0f};
 };
 
 LightingUbo BuildLightingUbo(const RendererContext& ctx) {
@@ -70,11 +69,6 @@ LightingUbo BuildLightingUbo(const RendererContext& ctx) {
 		environment.diffuseStrength,
 		environment.specularStrength,
 		8.0f);
-	ubo.bloomParams = glm::vec4(
-		std::max(environment.bloomThreshold, 0.0f),
-		std::max(environment.bloomIntensity, 0.0f),
-		std::max(environment.bloomRadius, 0.0f),
-		0.0f);
 
 	return ubo;
 }

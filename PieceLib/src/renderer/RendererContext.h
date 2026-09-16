@@ -47,6 +47,10 @@ struct OffscreenFrameResources {
     VmaAllocation msaaEmissiveAllocation{nullptr};
     VkImageView msaaEmissiveImageView{VK_NULL_HANDLE};
 
+    VkImage msaaBloomParamsImage{VK_NULL_HANDLE};
+    VmaAllocation msaaBloomParamsAllocation{nullptr};
+    VkImageView msaaBloomParamsImageView{VK_NULL_HANDLE};
+
     VkImage depthImage{VK_NULL_HANDLE};
     VmaAllocation depthAllocation{nullptr};
     VkImageView depthImageView{VK_NULL_HANDLE};
@@ -67,6 +71,10 @@ struct OffscreenFrameResources {
     VkImage emissiveImage{VK_NULL_HANDLE};
     VmaAllocation emissiveAllocation{nullptr};
     VkImageView emissiveImageView{VK_NULL_HANDLE};
+
+    VkImage bloomParamsImage{VK_NULL_HANDLE};
+    VmaAllocation bloomParamsAllocation{nullptr};
+    VkImageView bloomParamsImageView{VK_NULL_HANDLE};
 
     VkImage msaaEntityIdImage{VK_NULL_HANDLE};
     VmaAllocation msaaEntityIdAllocation{nullptr};
@@ -160,6 +168,7 @@ struct RendererContext {
     VkFormat offscreenWorldPosRoughnessFormat{VK_FORMAT_R16G16B16A16_SFLOAT};
     VkFormat offscreenAlbedoAoFormat{VK_FORMAT_R8G8B8A8_UNORM};
     VkFormat offscreenLightingColorFormat{VK_FORMAT_R16G16B16A16_SFLOAT};
+    VkFormat bloomParamsFormat{VK_FORMAT_R16G16B16A16_SFLOAT};
     VkFormat entityIdFormat{VK_FORMAT_R32G32_UINT};
     std::vector<OffscreenFrameResources> offscreenFrames;
 

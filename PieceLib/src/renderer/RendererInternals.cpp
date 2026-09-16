@@ -60,6 +60,11 @@ void DestroyOffscreenResources(RendererContext &ctx)
             vkDestroyImageView(ctx.device, frame.msaaEmissiveImageView, nullptr);
             frame.msaaEmissiveImageView = VK_NULL_HANDLE;
         }
+        if (frame.msaaBloomParamsImageView != VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(ctx.device, frame.msaaBloomParamsImageView, nullptr);
+            frame.msaaBloomParamsImageView = VK_NULL_HANDLE;
+        }
         if (frame.msaaEntityIdImageView != VK_NULL_HANDLE)
         {
             vkDestroyImageView(ctx.device, frame.msaaEntityIdImageView, nullptr);
@@ -84,6 +89,11 @@ void DestroyOffscreenResources(RendererContext &ctx)
         {
             vkDestroyImageView(ctx.device, frame.emissiveImageView, nullptr);
             frame.emissiveImageView = VK_NULL_HANDLE;
+        }
+        if (frame.bloomParamsImageView != VK_NULL_HANDLE)
+        {
+            vkDestroyImageView(ctx.device, frame.bloomParamsImageView, nullptr);
+            frame.bloomParamsImageView = VK_NULL_HANDLE;
         }
         if (frame.entityIdImageView != VK_NULL_HANDLE)
         {
@@ -139,6 +149,12 @@ void DestroyOffscreenResources(RendererContext &ctx)
             frame.msaaEmissiveImage = VK_NULL_HANDLE;
             frame.msaaEmissiveAllocation = nullptr;
         }
+        if (frame.msaaBloomParamsImage != VK_NULL_HANDLE && frame.msaaBloomParamsAllocation != nullptr)
+        {
+            vmaDestroyImage(ctx.deviceWrapper->allocator(), frame.msaaBloomParamsImage, frame.msaaBloomParamsAllocation);
+            frame.msaaBloomParamsImage = VK_NULL_HANDLE;
+            frame.msaaBloomParamsAllocation = nullptr;
+        }
         if (frame.msaaEntityIdImage != VK_NULL_HANDLE && frame.msaaEntityIdAllocation != nullptr)
         {
             vmaDestroyImage(ctx.deviceWrapper->allocator(), frame.msaaEntityIdImage, frame.msaaEntityIdAllocation);
@@ -168,6 +184,12 @@ void DestroyOffscreenResources(RendererContext &ctx)
             vmaDestroyImage(ctx.deviceWrapper->allocator(), frame.emissiveImage, frame.emissiveAllocation);
             frame.emissiveImage = VK_NULL_HANDLE;
             frame.emissiveAllocation = nullptr;
+        }
+        if (frame.bloomParamsImage != VK_NULL_HANDLE && frame.bloomParamsAllocation != nullptr)
+        {
+            vmaDestroyImage(ctx.deviceWrapper->allocator(), frame.bloomParamsImage, frame.bloomParamsAllocation);
+            frame.bloomParamsImage = VK_NULL_HANDLE;
+            frame.bloomParamsAllocation = nullptr;
         }
         if (frame.entityIdImage != VK_NULL_HANDLE && frame.entityIdAllocation != nullptr)
         {
@@ -424,10 +446,10 @@ void CreateBloomRenderPass(RendererContext &ctx)
     std::array<VkSubpassDependency, 2> dependencies{};
     dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
     dependencies[0].dstSubpass = 0;
-    dependencies[0].srcStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-    dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependencies[0].srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-    dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dependencies[0].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependencies[0].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    dependencies[0].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    dependencies[0].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
     dependencies[1].srcSubpass = 0;
     dependencies[1].dstSubpass = VK_SUBPASS_EXTERNAL;
     dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -502,6 +524,9 @@ void CreateGeometryRenderPass(RendererContext &ctx)
         emissiveAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         emissiveAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
+        VkAttachmentDescription bloomParamsAttachment = emissiveAttachment;
+        bloomParamsAttachment.format = ctx.bloomParamsFormat;
+
         std::array<VkAttachmentReference, 4> colorAttachmentRefs{};
         colorAttachmentRefs[0].attachment = 0;
         colorAttachmentRefs[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
@@ -513,7 +538,7 @@ void CreateGeometryRenderPass(RendererContext &ctx)
         colorAttachmentRefs[3].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
         VkAttachmentReference depthAttachmentRef{};
-        depthAttachmentRef.attachment = 4;
+        depthAttachmentRef.attachment = 5;
         depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
         VkSubpassDescription subpass{};
@@ -547,19 +572,23 @@ void CreateGeometryRenderPass(RendererContext &ctx)
         entityIdAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
         entityIdAttachment.finalLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
 
+        VkAttachmentReference bloomParamsAttachmentRef{};
+        bloomParamsAttachmentRef.attachment = 4;
+        bloomParamsAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         VkAttachmentReference entityIdAttachmentRef{};
-        entityIdAttachmentRef.attachment = 5;
+        entityIdAttachmentRef.attachment = 6;
         entityIdAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        subpass.colorAttachmentCount = 5;
-        std::array<VkAttachmentReference, 5> singleSampleColorRefs{
-            colorAttachmentRefs[0], colorAttachmentRefs[1], colorAttachmentRefs[2], colorAttachmentRefs[3], entityIdAttachmentRef};
+        subpass.colorAttachmentCount = 6;
+        std::array<VkAttachmentReference, 6> singleSampleColorRefs{
+            colorAttachmentRefs[0], colorAttachmentRefs[1], colorAttachmentRefs[2], colorAttachmentRefs[3], entityIdAttachmentRef, bloomParamsAttachmentRef};
         subpass.pColorAttachments = singleSampleColorRefs.data();
 
-        std::array<VkAttachmentDescription, 6> attachments = {
+        std::array<VkAttachmentDescription, 7> attachments = {
             worldPosRoughnessAttachment,
             albedoAoAttachment,
             normalAoAttachment,
             emissiveAttachment,
+            bloomParamsAttachment,
             depthAttachment,
             entityIdAttachment};
 
@@ -627,6 +656,9 @@ void CreateGeometryRenderPass(RendererContext &ctx)
     emissiveAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     emissiveAttachment.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
+    VkAttachmentDescription bloomParamsAttachment = emissiveAttachment;
+    bloomParamsAttachment.format = ctx.bloomParamsFormat;
+
     VkAttachmentDescription entityIdAttachment{};
     entityIdAttachment.format = ctx.entityIdFormat;
     entityIdAttachment.samples = ctx.msaaSamples;
@@ -687,7 +719,10 @@ void CreateGeometryRenderPass(RendererContext &ctx)
     emissiveAttachmentResolve.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     emissiveAttachmentResolve.finalLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-    std::array<VkAttachmentReference, 5> colorAttachmentRefs{};
+    VkAttachmentDescription bloomParamsAttachmentResolve = emissiveAttachmentResolve;
+    bloomParamsAttachmentResolve.format = ctx.bloomParamsFormat;
+
+    std::array<VkAttachmentReference, 6> colorAttachmentRefs{};
     colorAttachmentRefs[0].attachment = 0;
     colorAttachmentRefs[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     colorAttachmentRefs[1].attachment = 1;
@@ -696,23 +731,27 @@ void CreateGeometryRenderPass(RendererContext &ctx)
     colorAttachmentRefs[2].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
     colorAttachmentRefs[3].attachment = 3;
     colorAttachmentRefs[3].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    colorAttachmentRefs[4].attachment = 5;
+    colorAttachmentRefs[4].attachment = 6;
     colorAttachmentRefs[4].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    colorAttachmentRefs[5].attachment = 4;
+    colorAttachmentRefs[5].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    std::array<VkAttachmentReference, 5> resolveAttachmentRefs{};
-    resolveAttachmentRefs[0].attachment = 6;
+    std::array<VkAttachmentReference, 6> resolveAttachmentRefs{};
+    resolveAttachmentRefs[0].attachment = 7;
     resolveAttachmentRefs[0].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    resolveAttachmentRefs[1].attachment = 7;
+    resolveAttachmentRefs[1].attachment = 8;
     resolveAttachmentRefs[1].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    resolveAttachmentRefs[2].attachment = 8;
+    resolveAttachmentRefs[2].attachment = 9;
     resolveAttachmentRefs[2].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    resolveAttachmentRefs[3].attachment = 9;
+    resolveAttachmentRefs[3].attachment = 10;
     resolveAttachmentRefs[3].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    resolveAttachmentRefs[4].attachment = 10;
+    resolveAttachmentRefs[4].attachment = 12;
     resolveAttachmentRefs[4].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    resolveAttachmentRefs[5].attachment = 11;
+    resolveAttachmentRefs[5].layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
     VkAttachmentReference depthAttachmentRef{};
-    depthAttachmentRef.attachment = 4;
+    depthAttachmentRef.attachment = 5;
     depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
     VkSubpassDescription subpass{};
@@ -737,17 +776,19 @@ void CreateGeometryRenderPass(RendererContext &ctx)
     dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
     dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-    std::array<VkAttachmentDescription, 11> attachments = {
+    std::array<VkAttachmentDescription, 13> attachments = {
         worldPosRoughnessAttachment,
         albedoAoAttachment,
         normalAoAttachment,
         emissiveAttachment,
+        bloomParamsAttachment,
         depthAttachment,
         entityIdAttachment,
         worldPosRoughnessAttachmentResolve,
         albedoAoAttachmentResolve,
         normalAoAttachmentResolve,
         emissiveAttachmentResolve,
+        bloomParamsAttachmentResolve,
         entityIdAttachmentResolve
     };
 
@@ -850,6 +891,14 @@ void CreateOffscreenResources(RendererContext &ctx)
                 frame.emissiveImageView);
 
             createColorTarget(
+                ctx.bloomParamsFormat,
+                VK_SAMPLE_COUNT_1_BIT,
+                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                frame.bloomParamsImage,
+                frame.bloomParamsAllocation,
+                frame.bloomParamsImageView);
+
+            createColorTarget(
                 ctx.entityIdFormat,
                 VK_SAMPLE_COUNT_1_BIT,
                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
@@ -892,6 +941,14 @@ void CreateOffscreenResources(RendererContext &ctx)
                 frame.msaaEmissiveImageView);
 
             createColorTarget(
+                ctx.bloomParamsFormat,
+                ctx.msaaSamples,
+                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                frame.msaaBloomParamsImage,
+                frame.msaaBloomParamsAllocation,
+                frame.msaaBloomParamsImageView);
+
+            createColorTarget(
                 ctx.offscreenWorldPosRoughnessFormat,
                 VK_SAMPLE_COUNT_1_BIT,
                 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
@@ -922,6 +979,14 @@ void CreateOffscreenResources(RendererContext &ctx)
                 frame.emissiveImage,
                 frame.emissiveAllocation,
                 frame.emissiveImageView);
+
+            createColorTarget(
+                ctx.bloomParamsFormat,
+                VK_SAMPLE_COUNT_1_BIT,
+                VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+                frame.bloomParamsImage,
+                frame.bloomParamsAllocation,
+                frame.bloomParamsImageView);
 
             createColorTarget(
                 ctx.entityIdFormat,
@@ -1012,7 +1077,7 @@ void CreateOffscreenResources(RendererContext &ctx)
         result = vkCreateImageView(ctx.device, &depthViewInfo, nullptr, &frame.depthImageView);
         PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create offscreen depth image view");
 
-        std::array<VkImageView, 11> attachments{};
+        std::array<VkImageView, 13> attachments{};
         uint32_t attachmentCount = 0;
         if (ctx.msaaSamples == VK_SAMPLE_COUNT_1_BIT)
         {
@@ -1021,6 +1086,7 @@ void CreateOffscreenResources(RendererContext &ctx)
                 frame.albedoAoImageView,
                 frame.normalAoImageView,
                 frame.emissiveImageView,
+                frame.bloomParamsImageView,
                 frame.depthImageView,
                 frame.entityIdImageView,
                 VK_NULL_HANDLE,
@@ -1036,14 +1102,16 @@ void CreateOffscreenResources(RendererContext &ctx)
                 frame.msaaAlbedoAoImageView,
                 frame.msaaNormalAoImageView,
                 frame.msaaEmissiveImageView,
+                frame.msaaBloomParamsImageView,
                 frame.depthImageView,
                 frame.msaaEntityIdImageView,
                 frame.worldPosRoughnessImageView,
                 frame.albedoAoImageView,
                 frame.normalAoImageView,
                 frame.emissiveImageView,
+                frame.bloomParamsImageView,
                 frame.entityIdImageView};
-            attachmentCount = 11;
+            attachmentCount = 13;
         }
 
         VkFramebufferCreateInfo framebufferInfo{};
@@ -1148,10 +1216,12 @@ void CreateCompositeResources(RendererContext &ctx)
 
         ctx.bloomSetLayout = DescriptorSetLayout::Builder(*ctx.deviceWrapper)
                                                             .addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                                                            .addBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                                                            .addBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
                                                             .build();
         ctx.bloomDescriptorPool = DescriptorPool::Builder(*ctx.deviceWrapper)
                                                                       .setMaxSets(imageCount * 3)
-                                                                      .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageCount * 3)
+                                                                          .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, imageCount * 9)
                                                                     .build();
 
     const EnvironmentSettings environment = World::GetEnvironmentSettings();
@@ -1264,8 +1334,19 @@ void CreateCompositeResources(RendererContext &ctx)
         bloomInputInfo.sampler = ctx.compositeSampler;
         bloomInputInfo.imageView = ctx.offscreenFrames[i].lightingColorImageView;
         bloomInputInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+        VkDescriptorImageInfo bloomParamsInfo{};
+        bloomParamsInfo.sampler = ctx.compositeSampler;
+        bloomParamsInfo.imageView = ctx.offscreenFrames[i].bloomParamsImageView;
+        bloomParamsInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        VkDescriptorImageInfo emissiveBloomInfo{};
+        emissiveBloomInfo.sampler = ctx.compositeSampler;
+        emissiveBloomInfo.imageView = ctx.offscreenFrames[i].emissiveImageView;
+        emissiveBloomInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         DescriptorWriter(*ctx.bloomSetLayout, *ctx.bloomDescriptorPool)
             .writeImage(0, &bloomInputInfo)
+            .writeImage(1, &bloomParamsInfo)
+            .writeImage(2, &emissiveBloomInfo)
             .overwrite(ctx.bloomExtractDescriptorSets[i]);
 
         VkDescriptorImageInfo bloomExtractInfo{};
@@ -1274,6 +1355,8 @@ void CreateCompositeResources(RendererContext &ctx)
         bloomExtractInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         DescriptorWriter(*ctx.bloomSetLayout, *ctx.bloomDescriptorPool)
             .writeImage(0, &bloomExtractInfo)
+            .writeImage(1, &bloomParamsInfo)
+            .writeImage(2, &emissiveBloomInfo)
             .overwrite(ctx.bloomBlurDescriptorSets[i]);
 
         VkDescriptorImageInfo bloomBlurInfo{};
@@ -1282,6 +1365,8 @@ void CreateCompositeResources(RendererContext &ctx)
         bloomBlurInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         DescriptorWriter(*ctx.bloomSetLayout, *ctx.bloomDescriptorPool)
             .writeImage(0, &bloomBlurInfo)
+            .writeImage(1, &bloomParamsInfo)
+            .writeImage(2, &emissiveBloomInfo)
             .overwrite(ctx.bloomVerticalDescriptorSets[i]);
 
     }
@@ -1298,6 +1383,7 @@ void CreateGraphicsPipeline(RendererContext& ctx) {
     geometryConfig.renderPass = ctx.geometryRenderPass;
     geometryConfig.pipelineLayout = ctx.geometryPipelineLayout;
     geometryConfig.colorBlendAttachments = {
+        geometryConfig.colorBlendAttachments[0],
         geometryConfig.colorBlendAttachments[0],
         geometryConfig.colorBlendAttachments[0],
         geometryConfig.colorBlendAttachments[0],

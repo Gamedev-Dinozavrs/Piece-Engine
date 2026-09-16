@@ -1,5 +1,7 @@
 #include "ContentBrowserPanel.h"
 
+#include "EditorPlacement.h"
+
 #include "imgui.h"
 
 #include <assets/AssetImporter.h>
@@ -112,6 +114,7 @@ void ContentBrowserPanel::OnImGuiRender() {
 
     bool openCreateMaterialPopup = false;
     if (ImGui::BeginPopupContextWindow("ContentBrowserEmptySpace", ImGuiPopupFlags_NoOpenOverItems)) {
+        EditorPlacement::DrawCreateMenu();
         if (ImGui::MenuItem("Create Material")) {
             std::snprintf(m_CreateMaterialBuffer, sizeof(m_CreateMaterialBuffer), "%s", "Material");
             openCreateMaterialPopup = true;

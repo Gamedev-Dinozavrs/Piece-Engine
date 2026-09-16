@@ -9,13 +9,14 @@ namespace Piece {
 namespace GeometryPass {
 
 void Record(const RendererContext& ctx, const FrameInfo& frameInfo) {
-	VkClearValue geometryClearValues[6] = {};
+	VkClearValue geometryClearValues[7] = {};
 	geometryClearValues[0].color = {{0.0f, 0.0f, 0.0f, -1.0f}};
 	geometryClearValues[1].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
 	geometryClearValues[2].color = {{0.5f, 0.5f, 1.0f, 0.0f}};
 	geometryClearValues[3].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
-	geometryClearValues[4].depthStencil = {1.0f, 0};
-	geometryClearValues[5].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+	geometryClearValues[4].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
+	geometryClearValues[5].depthStencil = {1.0f, 0};
+	geometryClearValues[6].color = {{0.0f, 0.0f, 0.0f, 0.0f}};
 
 	VkRenderPassBeginInfo geometryPassInfo{};
 	geometryPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -23,7 +24,7 @@ void Record(const RendererContext& ctx, const FrameInfo& frameInfo) {
 	geometryPassInfo.framebuffer = ctx.offscreenFrames[frameInfo.imageIndex].framebuffer;
 	geometryPassInfo.renderArea.offset = {0, 0};
 	geometryPassInfo.renderArea.extent = frameInfo.swapChainExtent;
-	geometryPassInfo.clearValueCount = 6;
+	geometryPassInfo.clearValueCount = 7;
 	geometryPassInfo.pClearValues = geometryClearValues;
 
 	vkCmdBeginRenderPass(frameInfo.commandBuffer, &geometryPassInfo, VK_SUBPASS_CONTENTS_INLINE);

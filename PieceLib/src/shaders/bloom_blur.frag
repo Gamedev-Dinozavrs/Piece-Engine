@@ -2,6 +2,7 @@
 
 layout(location = 0) in vec2 fragUV;
 layout(set = 0, binding = 0) uniform sampler2D u_InputBloom;
+layout(set = 0, binding = 1) uniform sampler2D u_BloomParams;
 
 #include "lighting_model.glsl"
 
@@ -10,7 +11,8 @@ layout(location = 0) out vec4 outColor;
 void main() {
     vec2 texel = 1.0 / vec2(textureSize(u_InputBloom, 0));
     vec2 direction = vec2(1.0, 0.0);
-    vec2 stepSize = texel * max(u_Lighting.bloomParams.z, 1.0) * direction;
+    float radius = max(texture(u_BloomParams, fragUV).z, 0.0);
+    vec2 stepSize = texel * max(radius, 1.0) * direction;
 
     vec3 color = texture(u_InputBloom, fragUV).rgb * 0.227027;
     color += texture(u_InputBloom, fragUV + stepSize * 1.384615).rgb * 0.316216;

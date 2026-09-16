@@ -1,6 +1,7 @@
 #include "EditorLayer.h"
 
 #include "imgui.h"
+#include "EditorPlacement.h"
 #include <ImGuizmo.h>
 #include <core/Input.h>
 #include <core/KeyCodes.h>
@@ -121,6 +122,11 @@ void EditorLayer::OnImGuiRender() {
             ImGui::EndMenu();
         }
         ImGui::EndMenuBar();
+    }
+
+    if (ImGui::BeginPopupContextWindow("RenderAreaContext", ImGuiPopupFlags_NoOpenOverItems)) {
+        EditorPlacement::DrawCreateMenu();
+        ImGui::EndPopup();
     }
 
     ImGui::End();

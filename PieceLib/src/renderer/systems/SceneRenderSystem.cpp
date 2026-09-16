@@ -115,6 +115,12 @@ void Record(const RendererContext& ctx, const FrameInfo& frameInfo) {
 			: World::ResolveMaterialColors(materialId);
 		push.baseColor = glm::vec4(materialColors.baseColor, 1.0f);
 		push.emissiveColor = glm::vec4(materialColors.emissiveColor, materialColors.emissiveEnabled ? 1.0f : 0.0f);
+		push.bloomParams = glm::vec4(
+			std::max(materialColors.bloomThreshold, 0.0f),
+			std::max(materialColors.bloomIntensity, 0.0f),
+			std::max(materialColors.bloomRadius, 0.0f),
+			materialColors.hdrBloomEnabled ? 1.0f : 0.0f);
+		push.bloomFlags.x = (materialColors.emissiveEnabled && materialColors.emissiveBloomEnabled) ? 1.0f : 0.0f;
 		push.materialData.x = (meshRenderer.normalSource == NormalSource::Vertex) ? 1 : 0;
 		auto flagsIt = ctx.objectMaterialFlags.find(static_cast<uint32_t>(entityHandle));
 		push.materialData.y = (flagsIt != ctx.objectMaterialFlags.end()) ? static_cast<int>(flagsIt->second) : 0;

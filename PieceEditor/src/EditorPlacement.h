@@ -6,6 +6,7 @@ namespace Piece {
 
 namespace EditorPlacement {
 
+bool DrawCreateMenu();
 void SpawnPrimitiveInView(PrimitiveType primitiveType);
 void SpawnQuadInView();
 void SpawnCubeInView();

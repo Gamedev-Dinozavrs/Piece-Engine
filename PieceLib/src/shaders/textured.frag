@@ -18,6 +18,8 @@ layout(push_constant) uniform PushConstants {
     vec4 materialFactors;
     vec4 baseColor;
     vec4 emissiveColor;
+    vec4 bloomParams;
+    vec4 bloomFlags;
     ivec4 materialData;
 } pushConstants;
 
@@ -28,6 +30,7 @@ layout(location = 1) out vec4 outAlbedoAo;
 layout(location = 2) out vec4 outNormalAo;
 layout(location = 3) out vec4 outEmissive;
 layout(location = 4) out uvec2 outEntityId;
+layout(location = 5) out vec4 outBloomParams;
 
 const int MATERIAL_FLAG_HAS_NORMAL_MAP = 1 << 0;
 const int MATERIAL_FLAG_HAS_EMISSIVE_MAP = 1 << 1;
@@ -99,8 +102,9 @@ void main() {
     vec3 emissive = (pushConstants.emissiveColor.a > 0.5)
         ? material.emissive * pushConstants.emissiveColor.rgb
         : vec3(0.0);
-    outEmissive = vec4(emissive, 1.0);
+    outEmissive = vec4(emissive, pushConstants.bloomFlags.x);
     outEntityId = uvec2(
         uint(pushConstants.materialData.z),
         uint(pushConstants.materialData.w));
+    outBloomParams = pushConstants.bloomParams;
 }

@@ -64,9 +64,6 @@ struct EnvironmentSettings {
     float diffuseStrength{1.0f};
     float specularStrength{1.0f};
     float ambientStrength{0.08f};
-    float bloomThreshold{0.8f};
-    float bloomIntensity{0.35f};
-    float bloomRadius{2.0f};
     AATechnique aaTechnique{AATechnique::MSAA};
     uint32_t msaaSampleCount{4};
 };

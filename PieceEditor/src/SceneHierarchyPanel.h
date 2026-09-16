@@ -23,8 +23,6 @@ public:
     void OnImGuiRender();
 
 private:
-    void DrawSceneTools();
-    void DrawLookDevTools();
     bool SpawnObjFromPath(const std::filesystem::path& sourcePath, const std::string& displayName);
     bool MergeAllChildren(Entity rootEntity);
     bool RestoreImportedChildren(Entity rootEntity);

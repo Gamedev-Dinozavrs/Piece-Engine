@@ -1,7 +1,5 @@
 #include "SceneHierarchyPanel.h"
 
-#include "EditorPlacement.h"
-
 #include "imgui.h"
 #include "imgui_internal.h"
 
@@ -189,9 +187,6 @@ void SceneHierarchyPanel::SelectEntityByUUID(UUID uuid) {
 void SceneHierarchyPanel::OnImGuiRender() {
     ImGui::Begin("Hierarchy");
 
-    DrawSceneTools();
-    ImGui::Separator();
-
     const ImVec2 windowPos = ImGui::GetWindowPos();
     const ImVec2 contentMin = ImGui::GetWindowContentRegionMin();
     const ImVec2 contentMax = ImGui::GetWindowContentRegionMax();
@@ -248,13 +243,6 @@ void SceneHierarchyPanel::OnImGuiRender() {
             m_SelectionContext = {};
         }
 
-        if (ImGui::BeginPopupContextWindow(0, 1 | ImGuiPopupFlags_NoOpenOverItems)) {
-            if (ImGui::MenuItem("Create Empty")) {
-                m_Context->CreateEntity("Entity");
-            }
-            ImGui::EndPopup();
-        }
-
         if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_F2) && m_SelectionContext) {
             BeginRenameEntity(m_SelectionContext);
         }
@@ -296,146 +284,6 @@ void SceneHierarchyPanel::BeginRenameEntity(Entity entity) {
     m_RenameEntity = entity;
     std::snprintf(m_RenameBuffer, sizeof(m_RenameBuffer), "%s", entity.GetComponent<TagComponent>().tag.c_str());
     m_OpenRenamePopup = true;
-}
-
-void SceneHierarchyPanel::DrawSceneTools() {
-    ImGui::TextUnformatted("Create");
-    if (ImGui::Button("Quad")) {
-        EditorPlacement::SpawnPrimitiveInView(PrimitiveType::Quad);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Cube")) {
-        EditorPlacement::SpawnPrimitiveInView(PrimitiveType::Cube);
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Sphere")) {
-        EditorPlacement::SpawnPrimitiveInView(PrimitiveType::Sphere);
-    }
-
-    if (ImGui::Button("Point Light")) {
-        EditorPlacement::SpawnPointLightInView();
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Directional Light")) {
-        auto lighting = World::GetLightingSettings();
-        lighting.directionalEnabled = true;
-        World::SetLightingSettings(lighting);
-    }
-
-    DrawLookDevTools();
-
-    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.6f, 0.1f, 0.1f, 1.0f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.8f, 0.15f, 0.15f, 1.0f));
-    if (ImGui::Button("Clear Scene", ImVec2(-1, 0))) {
-        m_SelectionContext = {};
-        World::ClearScene();
-    }
-    ImGui::PopStyleColor(2);
-}
-
-void SceneHierarchyPanel::DrawLookDevTools() {
-    if (!ImGui::CollapsingHeader("LookDev", ImGuiTreeNodeFlags_DefaultOpen)) {
-        return;
-    }
-
-    LightingSettings lighting = World::GetLightingSettings();
-
-    if (ImGui::Button("Reset Neutral Lighting")) {
-        lighting.directionalEnabled = true;
-        lighting.directionalDirection = glm::vec3(-0.4f, -1.0f, -0.2f);
-        lighting.directionalColor = glm::vec3(1.0f, 0.98f, 0.9f);
-        lighting.directionalIntensity = 1.2f;
-        lighting.specularStrength = 1.0f;
-        lighting.specularShininessMin = 8.0f;
-        lighting.specularShininessMax = 128.0f;
-        lighting.pointLightCount = 0;
-    }
-
-    ImGui::Checkbox("Directional Enabled", &lighting.directionalEnabled);
-    ImGui::DragFloat3("Direction", &lighting.directionalDirection.x, 0.01f, -1.0f, 1.0f);
-    ImGui::ColorEdit3("Directional Color", &lighting.directionalColor.x);
-    ImGui::DragFloat("Directional Intensity", &lighting.directionalIntensity, 0.05f, 0.0f, 50.0f);
-
-    ImGui::SeparatorText("Specular");
-    ImGui::DragFloat("Specular Strength", &lighting.specularStrength, 0.01f, 0.0f, 4.0f);
-    ImGui::DragFloat("Shininess Min", &lighting.specularShininessMin, 0.25f, 1.0f, 512.0f);
-    ImGui::DragFloat("Shininess Max", &lighting.specularShininessMax, 0.25f, 1.0f, 1024.0f);
-
-    if (lighting.specularShininessMin > lighting.specularShininessMax) {
-        lighting.specularShininessMax = lighting.specularShininessMin;
-    }
-
-    ImGui::SeparatorText("Environment");
-    EnvironmentSettings environment = World::GetEnvironmentSettings();
-    ImGui::Checkbox("IBL Enabled", &environment.enabled);
-    ImGui::DragFloat("IBL Intensity", &environment.intensity, 0.01f, 0.0f, 8.0f);
-    ImGui::DragFloat("Diffuse Strength", &environment.diffuseStrength, 0.01f, 0.0f, 4.0f);
-    ImGui::DragFloat("IBL Specular Strength", &environment.specularStrength, 0.01f, 0.0f, 4.0f);
-    ImGui::DragFloat("Ambient Fill", &environment.ambientStrength, 0.01f, 0.0f, 1.0f);
-    ImGui::SeparatorText("Bloom");
-    ImGui::DragFloat("Threshold", &environment.bloomThreshold, 0.01f, 0.0f, 10.0f);
-    ImGui::DragFloat("Intensity", &environment.bloomIntensity, 0.01f, 0.0f, 5.0f);
-    ImGui::DragFloat("Radius", &environment.bloomRadius, 0.05f, 0.0f, 8.0f);
-    const char* aaTechniqueItems[] = {"Off", "MSAA"};
-    int aaTechniqueIndex = static_cast<int>(environment.aaTechnique);
-    if (ImGui::Combo("AA Technique", &aaTechniqueIndex, aaTechniqueItems, IM_ARRAYSIZE(aaTechniqueItems))) {
-        environment.aaTechnique = static_cast<AATechnique>(aaTechniqueIndex);
-    }
-    const char* msaaSampleItems[] = {"1x", "2x", "4x", "8x"};
-    uint32_t msaaSampleValues[] = {1u, 2u, 4u, 8u};
-    int msaaSampleIndex = 2;
-    for (int i = 0; i < IM_ARRAYSIZE(msaaSampleValues); ++i) {
-        if (environment.msaaSampleCount == msaaSampleValues[i]) {
-            msaaSampleIndex = i;
-            break;
-        }
-    }
-    ImGui::BeginDisabled(environment.aaTechnique != AATechnique::MSAA);
-    if (ImGui::Combo("MSAA Samples", &msaaSampleIndex, msaaSampleItems, IM_ARRAYSIZE(msaaSampleItems))) {
-        environment.msaaSampleCount = msaaSampleValues[msaaSampleIndex];
-    }
-    ImGui::EndDisabled();
-    ImGui::Text("Current AA: %s", AATechniqueLabel(environment.aaTechnique));
-    ImGui::Text("Current MSAA: %ux", environment.msaaSampleCount);
-    ImGui::TextDisabled("Off keeps shapes sharp; MSAA smooths geometry edges with GPU multisampling.");
-    ImGui::Text("Diffuse Map: %s", GetDisplayFileName(environment.diffuseMapPath).c_str());
-    if (ImGui::Button("Set Diffuse Env")) {
-        const char* imageFilter = "Image Files\0*.png;*.jpg;*.jpeg;*.bmp;*.tga;*.hdr\0All Files\0*.*\0";
-        Platform::OpenFileDialogAsync(imageFilter, [](std::string path) {
-            if (path.empty()) {
-                return;
-            }
-            EnvironmentSettings updated = World::GetEnvironmentSettings();
-            updated.diffuseMapPath = path;
-            updated.enabled = true;
-            World::SetEnvironmentSettings(updated);
-        });
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Clear Diffuse Env")) {
-        environment.diffuseMapPath.clear();
-    }
-
-    ImGui::Text("Specular Map: %s", GetDisplayFileName(environment.specularMapPath).c_str());
-    if (ImGui::Button("Set Specular Env")) {
-        const char* imageFilter = "Image Files\0*.png;*.jpg;*.jpeg;*.bmp;*.tga;*.hdr\0All Files\0*.*\0";
-        Platform::OpenFileDialogAsync(imageFilter, [](std::string path) {
-            if (path.empty()) {
-                return;
-            }
-            EnvironmentSettings updated = World::GetEnvironmentSettings();
-            updated.specularMapPath = path;
-            updated.enabled = true;
-            World::SetEnvironmentSettings(updated);
-        });
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Clear Specular Env")) {
-        environment.specularMapPath.clear();
-    }
-
-    World::SetLightingSettings(lighting);
-    World::SetEnvironmentSettings(environment);
 }
 
 bool SceneHierarchyPanel::SpawnObjFromPath(const std::filesystem::path& sourcePath, const std::string& displayName) {
@@ -1005,13 +853,31 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
                     glm::vec3 baseColor = materialComponent.colors.baseColor;
                     glm::vec3 emissiveColor = materialComponent.colors.emissiveColor;
                     bool emissiveEnabled = materialComponent.colors.emissiveEnabled;
+                    bool hdrBloomEnabled = materialComponent.colors.hdrBloomEnabled;
+                    bool emissiveBloomEnabled = materialComponent.colors.emissiveBloomEnabled;
                     bool colorsChanged = ImGui::ColorEdit3("Base Color", &baseColor.x);
                     colorsChanged |= ImGui::Checkbox("Emissive Enabled", &emissiveEnabled);
-                    ImGui::BeginDisabled(!emissiveEnabled);
-                    colorsChanged |= ImGui::ColorEdit3("Emissive Color", &emissiveColor.x);
-                    ImGui::EndDisabled();
+                    float bloomThreshold = materialComponent.colors.bloomThreshold;
+                    float bloomIntensity = materialComponent.colors.bloomIntensity;
+                    float bloomRadius = materialComponent.colors.bloomRadius;
+                    colorsChanged |= ImGui::Checkbox("HDR Bloom Enabled", &hdrBloomEnabled);
+                    colorsChanged |= ImGui::DragFloat("Bloom Threshold", &bloomThreshold, 0.01f, 0.0f, 10.0f);
+                    colorsChanged |= ImGui::DragFloat("Bloom Intensity", &bloomIntensity, 0.01f, 0.0f, 5.0f);
+                    colorsChanged |= ImGui::DragFloat("Bloom Radius", &bloomRadius, 0.05f, 0.0f, 8.0f);
+                    if (emissiveEnabled) {
+                        colorsChanged |= ImGui::Checkbox("Emissive Bloom Enabled", &emissiveBloomEnabled);
+                        colorsChanged |= ImGui::ColorEdit3("Emissive Color", &emissiveColor.x);
+                    }
                     if (colorsChanged) {
-                        materialComponent.colors = MaterialColors{baseColor, emissiveColor, emissiveEnabled};
+                        materialComponent.colors = MaterialColors{
+                            baseColor,
+                            emissiveColor,
+                            emissiveEnabled,
+                            hdrBloomEnabled,
+                            emissiveBloomEnabled,
+                            bloomThreshold,
+                            bloomIntensity,
+                            bloomRadius};
                     }
                     ImGui::Separator();
 

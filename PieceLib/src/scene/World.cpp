@@ -487,6 +487,8 @@ bool SetMaterialColors(uint32_t materialId, const MaterialColors& colors) {
         material.colors.baseColor = glm::clamp(colors.baseColor, glm::vec3(0.0f), glm::vec3(1.0f));
         material.colors.emissiveColor = glm::max(colors.emissiveColor, glm::vec3(0.0f));
         material.colors.emissiveEnabled = colors.emissiveEnabled;
+        material.colors.hdrBloomEnabled = colors.hdrBloomEnabled;
+        material.colors.emissiveBloomEnabled = colors.emissiveBloomEnabled;
         return true;
     }
 
@@ -674,9 +676,6 @@ void SetEnvironmentSettings(const EnvironmentSettings& settings) {
     s_EnvironmentSettings.diffuseStrength = std::max(0.0f, settings.diffuseStrength);
     s_EnvironmentSettings.specularStrength = std::max(0.0f, settings.specularStrength);
     s_EnvironmentSettings.ambientStrength = std::max(0.0f, settings.ambientStrength);
-    s_EnvironmentSettings.bloomThreshold = std::max(0.0f, settings.bloomThreshold);
-    s_EnvironmentSettings.bloomIntensity = std::max(0.0f, settings.bloomIntensity);
-    s_EnvironmentSettings.bloomRadius = std::max(0.0f, settings.bloomRadius);
     s_EnvironmentSettings.aaTechnique = settings.aaTechnique;
     s_EnvironmentSettings.msaaSampleCount = settings.msaaSampleCount;
 }
