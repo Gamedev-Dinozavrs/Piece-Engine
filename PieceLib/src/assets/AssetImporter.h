@@ -27,7 +27,7 @@ struct ImportedMaterialData {
     glm::vec3 baseColor{1.0f};
     glm::vec3 emissiveColor{0.0f};
     bool emissiveEnabled{false};
-    float roughnessFactor{1.0f};
+    float roughnessFactor{0.75f};
     float metallicFactor{1.0f};
 };
 

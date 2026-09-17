@@ -13,6 +13,8 @@ public:
 
     void onUpdate(float deltaTime);
     void onMouseScroll(float offsetY);
+    void cancelMouseInteraction();
+    void setInputEnabled(bool enabled);
     void setPerspective(float fovY, float aspectRatio, float nearClip, float farClip);
     void setViewportSize(float width, float height);
     void setPosition(const glm::vec3& position);
@@ -48,8 +50,9 @@ private:
     float m_PanSpeed = 0.0025f;
     float m_ZoomSpeed = 2.0f;
 
-    bool m_LeftMouseHeld = false;
-    bool m_RightMouseHeld = false;
+    bool m_OrbitHeld = false;
+    bool m_PanHeld = false;
+    bool m_InputEnabled = true;
     bool m_FirstMouse = true;
     double m_LastMouseX = 0.0;
     double m_LastMouseY = 0.0;

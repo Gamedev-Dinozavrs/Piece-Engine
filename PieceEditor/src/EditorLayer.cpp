@@ -1,7 +1,7 @@
 #include "EditorLayer.h"
 
 #include "imgui.h"
-#include "EditorPlacement.h"
+#include "imgui_internal.h"
 #include <ImGuizmo.h>
 #include <core/Input.h>
 #include <core/KeyCodes.h>
@@ -94,6 +94,16 @@ void EditorLayer::OnImGuiRender() {
     }
 
     ImGuiIO& io = ImGui::GetIO();
+    bool overEditorPanel = false;
+    const char* editorPanelNames[] = {"Hierarchy", "Properties", "Content Browser"};
+    for (const char* panelName : editorPanelNames) {
+        ImGuiWindow* panel = ImGui::FindWindowByName(panelName);
+        if (panel && ImGui::IsMouseHoveringRect(panel->Pos, ImVec2(panel->Pos.x + panel->Size.x, panel->Pos.y + panel->Size.y), true)) {
+            overEditorPanel = true;
+            break;
+        }
+    }
+
     if (io.ConfigFlags & ImGuiConfigFlags_DockingEnable) {
         ImGuiID dockspaceId = ImGui::GetID("PieceDockspace");
         ImGui::DockSpace(dockspaceId, ImVec2(0.0f, 0.0f), dockspaceFlags);
@@ -101,8 +111,10 @@ void EditorLayer::OnImGuiRender() {
 
     DrawTransformGizmo();
 
-    if (io.MouseClicked[0] && !io.WantCaptureMouse && !ImGui::IsAnyItemActive()
-        && !ImGuizmo::IsOver() && !ImGuizmo::IsUsing()) {
+    const bool leftClickInRenderArea = io.MouseClicked[ImGuiMouseButton_Left]
+        && !overEditorPanel
+        && !ImGui::IsAnyItemHovered();
+    if (leftClickInRenderArea && !ImGuizmo::IsOver() && !ImGuizmo::IsUsing()) {
         const ImVec2 mouse = io.MousePos;
         if (mouse.x >= 0.0f && mouse.y >= 0.0f) {
             const UUID picked = Renderer::ReadEntityIdAtPixel(
@@ -124,15 +136,12 @@ void EditorLayer::OnImGuiRender() {
         ImGui::EndMenuBar();
     }
 
-    if (ImGui::BeginPopupContextWindow("RenderAreaContext", ImGuiPopupFlags_NoOpenOverItems)) {
-        EditorPlacement::DrawCreateMenu();
-        ImGui::EndPopup();
-    }
-
     ImGui::End();
 
     m_SceneHierarchyPanel.OnImGuiRender();
     m_ContentBrowserPanel.OnImGuiRender();
+
+    Renderer::GetEditorCamera().setInputEnabled(!overEditorPanel);
 
     if (m_ShowMetrics) {
         ImGui::ShowMetricsWindow(&m_ShowMetrics);
@@ -183,3 +192,4 @@ void EditorLayer::DrawTransformGizmo() {
 }
 
 } // namespace Piece
+

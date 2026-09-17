@@ -664,6 +664,10 @@ namespace Piece
                 ImGuiIO &io = ImGui::GetIO();
                 if (io.WantCaptureMouse || io.WantCaptureKeyboard || io.WantTextInput)
                 {
+                    if (io.WantCaptureMouse)
+                    {
+                        ctx.camera->cancelMouseInteraction();
+                    }
                     return;
                 }
             }

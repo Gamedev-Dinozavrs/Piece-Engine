@@ -1,5 +1,7 @@
 #include "SceneHierarchyPanel.h"
 
+#include "EditorPlacement.h"
+
 #include "imgui.h"
 #include "imgui_internal.h"
 
@@ -246,6 +248,11 @@ void SceneHierarchyPanel::OnImGuiRender() {
         if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_F2) && m_SelectionContext) {
             BeginRenameEntity(m_SelectionContext);
         }
+    }
+
+    if (ImGui::BeginPopupContextWindow("HierarchyCreateContext", ImGuiPopupFlags_NoOpenOverItems)) {
+        EditorPlacement::DrawCreateMenu();
+        ImGui::EndPopup();
     }
 
     if (m_OpenRenamePopup) {
@@ -685,6 +692,8 @@ void SceneHierarchyPanel::DrawEntityNode(Entity entity) {
     bool doMergeAllChildren = false;
     bool doRestoreChildren = false;
     if (ImGui::BeginPopupContextItem()) {
+        EditorPlacement::DrawCreateMenu();
+        ImGui::Separator();
         if (entity.HasComponent<ImportedModelComponent>() && entity.HasComponent<HierarchyComponent>()) {
             const auto& imported = entity.GetComponent<ImportedModelComponent>();
             const auto& hierarchy = entity.GetComponent<HierarchyComponent>();

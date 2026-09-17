@@ -76,7 +76,7 @@ struct SpawnTransform {
 };
 
 struct MaterialSurfaceFactors {
-    float roughnessFactor{0.5f};
+    float roughnessFactor{0.75f};
     float metallicFactor{0.0f};
 };
 

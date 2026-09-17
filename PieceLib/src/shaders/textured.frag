@@ -86,9 +86,6 @@ void main() {
     vec3 normal = ComputeGeometryNormal(fragWorldPos);
     if (fragNormalSource == 1) {
         normal = normalize(fragWorldNormal);
-        if (!gl_FrontFacing) {
-            normal = -normal;
-        }
     }
 
     if ((fragMaterialFlags & MATERIAL_FLAG_HAS_NORMAL_MAP) != 0) {

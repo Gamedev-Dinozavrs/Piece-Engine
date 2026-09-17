@@ -15,6 +15,11 @@ EditorCamera::EditorCamera(float fovY, float aspectRatio, float nearClip, float 
 }
 
 void EditorCamera::onUpdate(float deltaTime) {
+    if (!m_InputEnabled) {
+        cancelMouseInteraction();
+        return;
+    }
+
     updateInputState();
 
     const float movementSpeed = m_MoveSpeed * (Input::IsKeyPressed(KeyCode::LeftShift) ? m_FastMultiplier : 1.0f);
@@ -54,16 +59,17 @@ void EditorCamera::onUpdate(float deltaTime) {
     m_LastMouseX = mouseX;
     m_LastMouseY = mouseY;
 
-    if (m_LeftMouseHeld) {
+    if (m_OrbitHeld) {
         m_Yaw += static_cast<float>(deltaX) * m_MouseSensitivity;
         m_Pitch -= static_cast<float>(deltaY) * m_MouseSensitivity;
         m_Pitch = std::clamp(m_Pitch, -89.0f, 89.0f);
     }
 
-    if (m_RightMouseHeld) {
+    if (m_PanHeld) {
         const glm::vec3 right = getRightDirection();
         const glm::vec3 up = getUpDirection();
-        const glm::vec3 panOffset = static_cast<float>(-deltaX) * m_PanSpeed * right + static_cast<float>(deltaY) * m_PanSpeed * up;
+        const glm::vec3 panOffset = static_cast<float>(-deltaX) * m_PanSpeed * right
+            + static_cast<float>(deltaY) * m_PanSpeed * up;
         m_FocalPoint += panOffset * m_Distance;
     }
 
@@ -74,6 +80,24 @@ void EditorCamera::onMouseScroll(float offsetY) {
     m_Distance -= offsetY * m_ZoomSpeed;
     m_Distance = std::clamp(m_Distance, 1.0f, 50.0f);
     updateView();
+}
+
+void EditorCamera::cancelMouseInteraction() {
+    if (!m_OrbitHeld && !m_PanHeld) {
+        return;
+    }
+
+    m_OrbitHeld = false;
+    m_PanHeld = false;
+    m_FirstMouse = true;
+    Input::SetMouseCaptured(false);
+}
+
+void EditorCamera::setInputEnabled(bool enabled) {
+    m_InputEnabled = enabled;
+    if (!enabled) {
+        cancelMouseInteraction();
+    }
 }
 
 void EditorCamera::setPerspective(float fovY, float aspectRatio, float nearClip, float farClip) {
@@ -108,14 +132,14 @@ void EditorCamera::updateView() {
 }
 
 void EditorCamera::updateInputState() {
-    const bool leftMouseHeld = Input::IsMouseButtonPressed(MouseButton::Left);
-    const bool rightMouseHeld = Input::IsMouseButtonPressed(MouseButton::Right);
+    const bool orbitHeld = Input::IsMouseButtonPressed(MouseButton::Left);
+    const bool panHeld = Input::IsMouseButtonPressed(MouseButton::Right);
 
-    if (leftMouseHeld != m_LeftMouseHeld || rightMouseHeld != m_RightMouseHeld) {
-        m_LeftMouseHeld = leftMouseHeld;
-        m_RightMouseHeld = rightMouseHeld;
+    if (orbitHeld != m_OrbitHeld || panHeld != m_PanHeld) {
+        m_OrbitHeld = orbitHeld;
+        m_PanHeld = panHeld;
         m_FirstMouse = true;
-        Input::SetMouseCaptured(m_LeftMouseHeld || m_RightMouseHeld);
+        Input::SetMouseCaptured(m_OrbitHeld || m_PanHeld);
     }
 }
 
