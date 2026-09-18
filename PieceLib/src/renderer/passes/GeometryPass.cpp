@@ -2,6 +2,7 @@
 
 #include <renderer/passes/GeometryPass.h>
 
+#include <renderer/systems/BillboardRenderSystem.h>
 #include <renderer/systems/SceneRenderSystem.h>
 
 namespace Piece {
@@ -35,6 +36,7 @@ void Record(const RendererContext& ctx, const FrameInfo& frameInfo) {
 	geometryFrameInfo.pipelineLayout = ctx.geometryPipelineLayout;
 	geometryFrameInfo.pipeline = ctx.geometryPipeline.get();
 	SceneRenderSystem::Record(ctx, geometryFrameInfo);
+	BillboardRenderSystem::Record(ctx, geometryFrameInfo);
 
 	vkCmdEndRenderPass(frameInfo.commandBuffer);
 }

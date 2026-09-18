@@ -44,6 +44,7 @@
 #include <renderer/passes/LightingPass.h>
 #include <renderer/systems/LightingRenderSystem.h>
 #include <renderer/systems/SceneRenderSystem.h>
+#include <renderer/systems/BillboardRenderSystem.h>
 #include <renderer/systems/UIRenderSystem.h>
 
 // Scene

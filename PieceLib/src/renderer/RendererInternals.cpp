@@ -11,6 +11,8 @@
 #include <scene/World.h>
 
 #include <array>
+#include <filesystem>
+#include <string>
 
 namespace Piece {
 
@@ -301,6 +303,19 @@ void DestroyPipelineLayouts(RendererContext &ctx)
         vkDestroyPipelineLayout(ctx.device, ctx.bloomPipelineLayout, nullptr);
         ctx.bloomPipelineLayout = VK_NULL_HANDLE;
     }
+    if (ctx.billboardPipelineLayout != VK_NULL_HANDLE)
+    {
+        vkDestroyPipelineLayout(ctx.device, ctx.billboardPipelineLayout, nullptr);
+        ctx.billboardPipelineLayout = VK_NULL_HANDLE;
+    }
+}
+
+void DestroyBillboardResources(RendererContext &ctx)
+{
+    ctx.pointLightIconDescriptorSet = VK_NULL_HANDLE;
+    ctx.billboardDescriptorPool.reset();
+    ctx.billboardSetLayout.reset();
+    ctx.pointLightIconTexture.reset();
 }
 
 void CreateLightingRenderPass(RendererContext &ctx)
@@ -1372,6 +1387,51 @@ void CreateCompositeResources(RendererContext &ctx)
     }
 }
 
+void CreateBillboardResources(RendererContext &ctx)
+{
+    if (!ctx.pointLightIconTexture)
+    {
+        const std::array<std::string, 2> candidates = {
+            "PieceEditor/assets/icons/point_light.png",
+            "assets/icons/point_light.png"};
+
+        std::string iconPath = candidates[0];
+        for (const std::string &candidate : candidates)
+        {
+            if (std::filesystem::exists(candidate))
+            {
+                iconPath = candidate;
+                break;
+            }
+        }
+
+        ctx.pointLightIconTexture = CreateRef<Texture>(*ctx.deviceWrapper, iconPath);
+    }
+
+    ctx.billboardSetLayout = DescriptorSetLayout::Builder(*ctx.deviceWrapper)
+                                  .addBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, VK_SHADER_STAGE_FRAGMENT_BIT)
+                                  .build();
+
+    ctx.billboardDescriptorPool = DescriptorPool::Builder(*ctx.deviceWrapper)
+                                       .setMaxSets(1)
+                                       .addPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1)
+                                       .build();
+
+    const bool allocated = ctx.billboardDescriptorPool->allocateDescriptor(
+        ctx.billboardSetLayout->getDescriptorSetLayout(),
+        ctx.pointLightIconDescriptorSet);
+    PIECE_CORE_ASSERT(allocated, "Failed to allocate billboard icon descriptor set");
+
+    VkDescriptorImageInfo iconInfo{};
+    iconInfo.sampler = ctx.pointLightIconTexture->getSampler();
+    iconInfo.imageView = ctx.pointLightIconTexture->getImageView();
+    iconInfo.imageLayout = ctx.pointLightIconTexture->getImageLayout();
+
+    DescriptorWriter(*ctx.billboardSetLayout, *ctx.billboardDescriptorPool)
+        .writeImage(0, &iconInfo)
+        .overwrite(ctx.pointLightIconDescriptorSet);
+}
+
 void CreateGraphicsPipeline(RendererContext& ctx) {
     const EnvironmentSettings environment = World::GetEnvironmentSettings();
     const bool useMsaaPath =
@@ -1404,6 +1464,23 @@ void CreateGraphicsPipeline(RendererContext& ctx) {
         *ctx.shaderLibrary->Get("textured.vert"),
         *ctx.shaderLibrary->Get("textured.frag"),
         geometryConfig);
+
+    PipelineConfigInfo billboardConfig{};
+    Pipeline::defaultPipelineConfigInfo(billboardConfig);
+    billboardConfig.renderPass = ctx.geometryRenderPass;
+    billboardConfig.pipelineLayout = ctx.billboardPipelineLayout;
+    billboardConfig.colorBlendAttachments = geometryConfig.colorBlendAttachments;
+    billboardConfig.colorBlendInfo.attachmentCount = static_cast<uint32_t>(billboardConfig.colorBlendAttachments.size());
+    billboardConfig.colorBlendInfo.pAttachments = billboardConfig.colorBlendAttachments.data();
+    billboardConfig.multisampleInfo.rasterizationSamples = ctx.msaaSamples;
+    billboardConfig.multisampleInfo.sampleShadingEnable = geometryConfig.multisampleInfo.sampleShadingEnable;
+    billboardConfig.multisampleInfo.minSampleShading = geometryConfig.multisampleInfo.minSampleShading;
+
+    ctx.billboardPipeline = CreateScope<Pipeline>(
+        *ctx.deviceWrapper,
+        *ctx.shaderLibrary->Get("billboard.vert"),
+        *ctx.shaderLibrary->Get("billboard.frag"),
+        billboardConfig);
 
     PipelineConfigInfo lightingConfig{};
     Pipeline::defaultPipelineConfigInfo(lightingConfig);

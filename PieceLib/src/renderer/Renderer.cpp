@@ -409,6 +409,7 @@ namespace Piece
         RendererInternals::CreateBloomRenderPass(ctx);
         RendererInternals::CreateOffscreenResources(ctx);
         RendererInternals::CreateCompositeResources(ctx);
+        RendererInternals::CreateBillboardResources(ctx);
         EnsureCompositeEnvironmentDescriptors(ctx);
 
         std::vector<VkDescriptorSetLayout> geometrySetLayouts{
@@ -449,6 +450,23 @@ namespace Piece
         result = vkCreatePipelineLayout(ctx.device, &bloomLayoutInfo, nullptr, &ctx.bloomPipelineLayout);
         PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create bloom pipeline layout");
 
+        VkPushConstantRange billboardPushConstantRange{};
+        billboardPushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        billboardPushConstantRange.offset = 0;
+        billboardPushConstantRange.size = sizeof(BillboardPushConstants);
+
+        VkDescriptorSetLayout billboardSetLayouts[] = {
+            ctx.billboardSetLayout->getDescriptorSetLayout(),
+            ctx.globalSetLayout->getDescriptorSetLayout()};
+        VkPipelineLayoutCreateInfo billboardLayoutInfo{};
+        billboardLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        billboardLayoutInfo.setLayoutCount = 2;
+        billboardLayoutInfo.pSetLayouts = billboardSetLayouts;
+        billboardLayoutInfo.pushConstantRangeCount = 1;
+        billboardLayoutInfo.pPushConstantRanges = &billboardPushConstantRange;
+        result = vkCreatePipelineLayout(ctx.device, &billboardLayoutInfo, nullptr, &ctx.billboardPipelineLayout);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to create billboard pipeline layout");
+
         const PrimitiveMeshData quadMeshData = PrimitiveMeshDataFactory::CreateQuad();
         ctx.quadMesh = CreateRef<Mesh>(*ctx.deviceWrapper, quadMeshData.vertices, quadMeshData.indices);
 
@@ -475,6 +493,8 @@ namespace Piece
         ctx.shaderLibrary->Load("bloom_extract.frag", PIECE_SHADER_DIR "/bloom_extract.frag.spv", Shader::Stage::Fragment);
         ctx.shaderLibrary->Load("bloom_blur.frag", PIECE_SHADER_DIR "/bloom_blur.frag.spv", Shader::Stage::Fragment);
         ctx.shaderLibrary->Load("bloom_blur_vertical.frag", PIECE_SHADER_DIR "/bloom_blur_vertical.frag.spv", Shader::Stage::Fragment);
+        ctx.shaderLibrary->Load("billboard.vert", PIECE_SHADER_DIR "/billboard.vert.spv", Shader::Stage::Vertex);
+        ctx.shaderLibrary->Load("billboard.frag", PIECE_SHADER_DIR "/billboard.frag.spv", Shader::Stage::Fragment);
 
         RendererInternals::CreateGraphicsPipeline(ctx);
         // command pool is created by Device; get it
@@ -509,6 +529,7 @@ namespace Piece
         RendererInternals::DestroyCompositeResources(ctx);
         RendererInternals::DestroyOffscreenResources(ctx);
         RendererInternals::DestroyGeometryRenderPass(ctx);
+        RendererInternals::DestroyBillboardResources(ctx);
         ctx.materialDescriptorPool.reset();
         ctx.materialSetLayout.reset();
         ctx.shaderLibrary.reset();
@@ -519,6 +540,7 @@ namespace Piece
         ctx.bloomBlurPipeline.reset();
         ctx.bloomVerticalPipeline.reset();
         ctx.presentPipeline.reset();
+        ctx.billboardPipeline.reset();
         RendererInternals::DestroyPipelineLayouts(ctx);
         RendererInternals::DestroyBloomRenderPass(ctx);
         RendererInternals::DestroyLightingRenderPass(ctx);
@@ -991,6 +1013,7 @@ namespace Piece
         ctx.bloomBlurPipeline.reset();
         ctx.bloomVerticalPipeline.reset();
         ctx.presentPipeline.reset();
+        ctx.billboardPipeline.reset();
         RendererInternals::DestroyPipelineLayouts(ctx);
         RendererInternals::DestroyCompositeResources(ctx);
         RendererInternals::DestroyOffscreenResources(ctx);
@@ -1077,6 +1100,23 @@ namespace Piece
         bloomLayoutInfo.pSetLayouts = bloomSetLayouts;
         result = vkCreatePipelineLayout(ctx.device, &bloomLayoutInfo, nullptr, &ctx.bloomPipelineLayout);
         PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to recreate bloom pipeline layout");
+
+        VkPushConstantRange billboardPushConstantRange{};
+        billboardPushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+        billboardPushConstantRange.offset = 0;
+        billboardPushConstantRange.size = sizeof(BillboardPushConstants);
+
+        VkDescriptorSetLayout billboardSetLayouts[] = {
+            ctx.billboardSetLayout->getDescriptorSetLayout(),
+            ctx.globalSetLayout->getDescriptorSetLayout()};
+        VkPipelineLayoutCreateInfo billboardLayoutInfo{};
+        billboardLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+        billboardLayoutInfo.setLayoutCount = 2;
+        billboardLayoutInfo.pSetLayouts = billboardSetLayouts;
+        billboardLayoutInfo.pushConstantRangeCount = 1;
+        billboardLayoutInfo.pPushConstantRanges = &billboardPushConstantRange;
+        result = vkCreatePipelineLayout(ctx.device, &billboardLayoutInfo, nullptr, &ctx.billboardPipelineLayout);
+        PIECE_CORE_ASSERT(result == VK_SUCCESS, "Failed to recreate billboard pipeline layout");
 
         RendererInternals::CreateGraphicsPipeline(ctx);
         CreateCommandBuffers();

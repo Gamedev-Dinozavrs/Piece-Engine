@@ -16,3 +16,6 @@
 [submodule "Dependencies/ImGuizmo"]
 	path = Dependencies/ImGuizmo
 	url = https://github.com/Gamedev-Dinozavrs/ImGuizmo
+[submodule "Dependencies/yaml-cpp"]
+	path = Dependencies/yaml-cpp
+	url = https://github.com/Gamedev-Dinozavrs/yaml-cpp

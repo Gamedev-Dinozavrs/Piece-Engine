@@ -119,6 +119,7 @@ struct RendererContext {
     Scope<Pipeline> bloomBlurPipeline;
     Scope<Pipeline> bloomVerticalPipeline;
     Scope<Pipeline> presentPipeline;
+    Scope<Pipeline> billboardPipeline;
 
     Ref<Mesh> quadMesh;
     Ref<Mesh> cubeMesh;
@@ -136,6 +137,10 @@ struct RendererContext {
     Scope<DescriptorPool> presentDescriptorPool;
     Scope<DescriptorSetLayout> bloomSetLayout;
     Scope<DescriptorPool> bloomDescriptorPool;
+    Scope<DescriptorSetLayout> billboardSetLayout;
+    Scope<DescriptorPool> billboardDescriptorPool;
+    VkDescriptorSet pointLightIconDescriptorSet{VK_NULL_HANDLE};
+    Ref<Texture> pointLightIconTexture;
     std::unordered_map<std::string, Ref<Texture>> textureCache;
     std::unordered_map<uint32_t, VkDescriptorSet> objectMaterialDescriptors;
     std::unordered_map<uint32_t, std::string> objectBoundMaterialSignature;
@@ -177,6 +182,7 @@ struct RendererContext {
     VkPipelineLayout lightingPipelineLayout{VK_NULL_HANDLE};
     VkPipelineLayout presentPipelineLayout{VK_NULL_HANDLE};
     VkPipelineLayout bloomPipelineLayout{VK_NULL_HANDLE};
+    VkPipelineLayout billboardPipelineLayout{VK_NULL_HANDLE};
 
     std::vector<FrameResources> frameResources;
     std::vector<VkFence> imagesInFlight;

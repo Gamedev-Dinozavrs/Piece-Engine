@@ -71,6 +71,12 @@ void main() {
     vec4 normalAo = texture(u_NormalAo, fragUV);
     vec4 emissiveSample = texture(u_Emissive, fragUV);
 
+    if (worldPosRoughness.w < -1.5) {
+        // Editor billboard icon: unlit passthrough, albedo already holds the final color.
+        outColor = vec4(albedoAo.rgb, 1.0);
+        return;
+    }
+
     if (worldPosRoughness.w < 0.0) {
         vec3 background = (u_Lighting.iblParams.x > 0.0)
             ? ComputeBackgroundEnvironment()

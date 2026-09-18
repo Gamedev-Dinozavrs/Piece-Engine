@@ -81,6 +81,13 @@ void main() {
         vec4 normalAo = texelFetch(u_NormalAo, pixel, i);
         vec4 emissiveSample = texelFetch(u_Emissive, pixel, i);
 
+        if (worldPosRoughness.w < -1.5) {
+            // Editor billboard icon: unlit passthrough, albedo already holds the final color.
+            accumColor += albedoAo.rgb;
+            coveredSamples += 1.0;
+            continue;
+        }
+
         if (worldPosRoughness.w < 0.0) {
             continue;
         }
