@@ -5,11 +5,15 @@
 #include <ImGuizmo.h>
 #include <core/Input.h>
 #include <core/KeyCodes.h>
+#include <core/Log.h>
 #include <event/Event.h>
 #include <renderer/Renderer.h>
 #include <scene/Components.h>
 #include <scene/EditorCamera.h>
+#include <scene/Scene.h>
+#include <scene/SceneSerializer.h>
 #include <scene/World.h>
+#include <utils/platform/WindowsUtils.h>
 
 namespace Piece {
 
@@ -125,6 +129,26 @@ void EditorLayer::OnImGuiRender() {
     }
 
     if (ImGui::BeginMenuBar()) {
+        if (ImGui::BeginMenu("File")) {
+            if (ImGui::MenuItem("New Scene", "Ctrl+N")) {
+                NewScene();
+            }
+            if (ImGui::MenuItem("Open Scene...", "Ctrl+O")) {
+                OpenScene();
+            }
+            if (ImGui::MenuItem("Save Scene", "Ctrl+S")) {
+                SaveScene();
+            }
+            if (ImGui::MenuItem("Save Scene As...", "Ctrl+Shift+S")) {
+                SaveSceneAs();
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Close Scene")) {
+                World::ClearScene();
+                m_CurrentScenePath.clear();
+            }
+            ImGui::EndMenu();
+        }
         if (ImGui::BeginMenu("View")) {
             ImGui::MenuItem("Metrics", nullptr, &m_ShowMetrics);
             const bool reviewModePreview = m_ReviewMode;
@@ -189,6 +213,67 @@ void EditorLayer::DrawTransformGizmo() {
         entityTransform.rotation = glm::vec3(rotation[0], rotation[1], rotation[2]);
         entityTransform.scale = glm::vec3(scale[0], scale[1], scale[2]);
     }
+}
+
+namespace {
+constexpr const char* kSceneFileFilter = "Piece Scene\0*.piecescene\0All Files\0*.*\0";
+constexpr const char* kSceneFileExtension = "piecescene";
+} // namespace
+
+void EditorLayer::NewScene() {
+    Renderer::WaitIdle();
+    World::ClearScene();
+    m_CurrentScenePath.clear();
+    m_SceneHierarchyPanel.SetContext(World::GetActiveScene());
+}
+
+void EditorLayer::OpenScene() {
+    const std::string path = Platform::OpenFileDialog(kSceneFileFilter);
+    if (path.empty()) {
+        return;
+    }
+
+    Renderer::WaitIdle();
+    Ref<Scene> scene = CreateRef<Scene>();
+    SceneSerializer serializer(scene);
+    if (!serializer.Deserialize(path)) {
+        PIECE_ERROR("Failed to open scene: {}", path);
+        return;
+    }
+
+    m_CurrentScenePath = path;
+    m_SceneHierarchyPanel.SetContext(World::GetActiveScene());
+}
+
+void EditorLayer::SaveScene() {
+    if (m_CurrentScenePath.empty()) {
+        SaveSceneAs();
+        return;
+    }
+
+    Ref<Scene> scene = World::GetActiveScene();
+    if (!scene) {
+        return;
+    }
+
+    SceneSerializer serializer(scene);
+    serializer.Serialize(m_CurrentScenePath);
+}
+
+void EditorLayer::SaveSceneAs() {
+    Ref<Scene> scene = World::GetActiveScene();
+    if (!scene) {
+        return;
+    }
+
+    const std::string path = Platform::SaveFileDialog(kSceneFileFilter, kSceneFileExtension);
+    if (path.empty()) {
+        return;
+    }
+
+    SceneSerializer serializer(scene);
+    serializer.Serialize(path);
+    m_CurrentScenePath = path;
 }
 
 } // namespace Piece

@@ -113,10 +113,17 @@ bool DestroyEntity(uint32_t entityId);
 std::vector<RenderEntityView> GetRenderEntities();
 bool SetEntityTransform(uint32_t entityId, const SpawnTransform& transform);
 bool SetEntityMaterial(uint32_t entityId, uint32_t materialId);
+bool SetEntityImportedModelInfo(uint32_t entityId, const std::string& sourcePath, const std::string& meshName);
 
 uint32_t CreateMaterial(const std::string& name = "Material");
 uint32_t GetDefaultMaterialId();
+void SetDefaultMaterialId(uint32_t materialId);
 std::vector<MaterialView> GetMaterials();
+// Removes every material from the registry without touching the scene. Used when loading a scene file.
+void ClearMaterials();
+// Re-inserts a material with an explicit id (preserving references from a loaded scene file).
+uint32_t RestoreMaterial(uint32_t id, const std::string& name, const MaterialTextures& textures,
+    const MaterialSurfaceFactors& surfaceFactors, const MaterialColors& colors);
 bool SetMaterialName(uint32_t materialId, const std::string& name);
 bool SetMaterialColors(uint32_t materialId, const MaterialColors& colors);
 bool SetMaterialTexturePath(uint32_t materialId, TextureSlot slot, const std::string& path);
@@ -129,6 +136,16 @@ LightingSettings GetLightingSettings();
 void SetLightingSettings(const LightingSettings& settings);
 EnvironmentSettings GetEnvironmentSettings();
 void SetEnvironmentSettings(const EnvironmentSettings& settings);
+
+struct SpecularSettings {
+    float strength{1.0f};
+    float shininessMin{8.0f};
+    float shininessMax{128.0f};
+};
+
+// Specular scalars only (no entity side effects), used when loading a scene file.
+SpecularSettings GetSpecularSettings();
+void SetSpecularSettings(const SpecularSettings& settings);
 
 // Destroys all entities and resets materials and lighting to defaults.
 void ClearScene();

@@ -20,7 +20,7 @@ namespace Piece
         constexpr uint32_t kMaterialFlagHasNormalMap = 1u << 0;
         constexpr uint32_t kMaterialFlagHasEmissiveMap = 1u << 1;
 
-        VkExtent2D GetValidSwapChainExtent(Window *window)
+        VkExtent2D GetValidSwapChainExtent(Window *window, Device &device)
         {
             PIECE_CORE_ASSERT(window != nullptr, "Window must not be null");
 
@@ -32,6 +32,30 @@ namespace Piece
                 glfwWaitEvents();
                 width = window->GetWidth();
                 height = window->GetHeight();
+            }
+
+            // The window can report a non-zero size while the surface itself is still reporting a
+            // zero extent (e.g. transiently while minimizing/restoring on Windows). Creating a
+            // swapchain in that state violates VUID-VkSwapchainCreateInfoKHR-pNext-07781, so wait
+            // until the surface capabilities agree the surface can actually be presented to.
+            while (true)
+            {
+                const VkSurfaceCapabilitiesKHR &capabilities = device.getSwapChainSupport().capabilities;
+                const bool surfaceHasZeroExtent = capabilities.maxImageExtent.width == 0 || capabilities.maxImageExtent.height == 0;
+                if (!surfaceHasZeroExtent)
+                {
+                    break;
+                }
+
+                glfwWaitEvents();
+                width = window->GetWidth();
+                height = window->GetHeight();
+                while (width == 0 || height == 0)
+                {
+                    glfwWaitEvents();
+                    width = window->GetWidth();
+                    height = window->GetHeight();
+                }
             }
 
             return VkExtent2D{width, height};
@@ -364,7 +388,7 @@ namespace Piece
         ctx.msaaSamples = ChooseMsaaSamples(ctx.deviceWrapper->m_PhysicalDeviceProperties, environment.aaTechnique, environment.msaaSampleCount);
 
         // create swapchain wrapper which also creates image views, render pass, framebuffers and sync
-        VkExtent2D extent = GetValidSwapChainExtent(ctx.window);
+        VkExtent2D extent = GetValidSwapChainExtent(ctx.window, *ctx.deviceWrapper);
         ctx.swapChainWrapper = CreateScope<SwapChain>(*ctx.deviceWrapper, extent);
 
         ctx.swapChainImageFormat = ctx.swapChainWrapper->getSwapChainImageFormat();
@@ -1023,7 +1047,7 @@ namespace Piece
 
         ctx.swapChainWrapper.reset();
 
-        VkExtent2D extent = GetValidSwapChainExtent(ctx.window);
+        VkExtent2D extent = GetValidSwapChainExtent(ctx.window, *ctx.deviceWrapper);
         ctx.swapChainWrapper = CreateScope<SwapChain>(*ctx.deviceWrapper, extent);
 
         ctx.swapChainImageFormat = ctx.swapChainWrapper->getSwapChainImageFormat();

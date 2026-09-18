@@ -68,6 +68,7 @@ target_include_directories(PieceLib
         ${CMAKE_SOURCE_DIR}/Dependencies/spdlog/include
         ${CMAKE_SOURCE_DIR}/Dependencies/entt/include
         ${CMAKE_SOURCE_DIR}/Dependencies/tinyobjloader
+        ${CMAKE_SOURCE_DIR}/Dependencies/yaml-cpp/include
 )
 
 target_link_libraries(PieceLib
@@ -76,6 +77,7 @@ target_link_libraries(PieceLib
         glm
     fastgltf::fastgltf
         Vulkan::Vulkan
+        yaml-cpp::yaml-cpp
 )
 
 source_group("Core" FILES ${CORE})

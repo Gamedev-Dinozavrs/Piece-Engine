@@ -44,6 +44,7 @@ enum class ImportGroupMode : uint8_t {
 
 struct ImportedModelComponent {
     std::string sourcePath;
+    std::string meshName;
     ImportGroupMode mode{ImportGroupMode::PreserveGroups};
     bool grouped{true};
 };

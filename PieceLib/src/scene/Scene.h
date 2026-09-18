@@ -44,4 +44,7 @@ private:
     friend class Entity;
 };
 
+template <>
+void Scene::OnComponentAdded<CameraComponent>(Entity entity, CameraComponent& component);
+
 } // namespace Piece

@@ -42,4 +42,25 @@ void OpenFileDialogAsync(const char* filter, std::function<void(std::string)> on
     });
 }
 
+std::string SaveFileDialog(const char* filter, const char* defaultExtension) {
+#ifdef PLATFORM_WINDOWS
+    OPENFILENAMEA ofn{};
+    char filePath[MAX_PATH] = { 0 };
+
+    ofn.lStructSize = sizeof(OPENFILENAMEA);
+    ofn.hwndOwner = nullptr;
+    ofn.lpstrFile = filePath;
+    ofn.nMaxFile = MAX_PATH;
+    ofn.lpstrFilter = filter;
+    ofn.nFilterIndex = 1;
+    ofn.lpstrDefExt = defaultExtension;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR | OFN_OVERWRITEPROMPT;
+
+    if (GetSaveFileNameA(&ofn) == TRUE) {
+        return std::string(filePath);
+    }
+#endif
+    return {};
+}
+
 } // namespace Piece::Platform

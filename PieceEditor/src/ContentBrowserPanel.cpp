@@ -455,6 +455,7 @@ void ContentBrowserPanel::SpawnUploadedTemplate(size_t index) {
                 if (itMat != importerMatToWorldMat.end()) {
                     World::SetEntityMaterial(entityId, itMat->second);
                 }
+                World::SetEntityImportedModelInfo(entityId, templateInfo.sourcePath.string(), meshData.name);
                 ++spawnedCount;
             }
             offset += 1.5f;

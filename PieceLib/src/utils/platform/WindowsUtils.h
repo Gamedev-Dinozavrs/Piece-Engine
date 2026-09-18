@@ -13,4 +13,7 @@ std::string OpenFileDialog(const char* filter);
 // selected path, or not called at all if the user cancelled.
 void OpenFileDialogAsync(const char* filter, std::function<void(std::string)> onResult);
 
+// Blocking: opens a save file dialog on the calling thread. Returns empty string if cancelled.
+std::string SaveFileDialog(const char* filter, const char* defaultExtension);
+
 } // namespace Piece::Platform
