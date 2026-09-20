@@ -1,6 +1,7 @@
 #pragma once
 
 #include <core/Core.h>
+#include <core/Timestep.h>
 #include <core/UUID.h>
 
 #include <entt.hpp>
@@ -20,6 +21,7 @@ public:
     ~Scene() = default;
 
     static Ref<Scene> Copy(const Ref<Scene>& other);
+    void OnUpdateRuntime(Timestep timestep);
 
     Entity CreateEntity(const std::string& name = "Entity", UUID uuid = UUID{});
     void DestroyEntity(Entity entity);

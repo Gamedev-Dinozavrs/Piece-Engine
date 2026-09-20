@@ -2,6 +2,7 @@
 
 #include <core/Core.h>
 #include <assets/AssetImporter.h>
+#include <scene/AnimationGraph.h>
 #include <scene/RenderObject.h>
 
 #include <array>
@@ -122,6 +123,13 @@ bool SetEntityImportedModelInfo(uint32_t entityId, const std::string& sourcePath
 bool SetEntityAnimationData(uint32_t entityId, const std::vector<ImportedJoint>& joints,
     const std::vector<ImportedAnimationClip>& clips);
 bool SetEntityAnimationClips(uint32_t entityId, const std::vector<ImportedAnimationClip>& clips);
+bool SetEntityAnimationPreviewClip(uint32_t entityId, const std::string& clipName);
+bool SetEntityAnimationPlayback(uint32_t entityId, bool playing, float speed);
+bool SetEntityAnimatorController(uint32_t entityId, const AnimatorController& controller);
+bool AddEntityAnimationClipSlot(uint32_t entityId);
+bool SetEntityAnimationClipSlot(uint32_t entityId, size_t slotIndex, const ImportedAnimationClip& clip);
+bool RenameEntityAnimationClip(uint32_t entityId, const std::string& oldName, const std::string& newName);
+bool RemoveEntityAnimationClip(uint32_t entityId, const std::string& clipName);
 
 uint32_t CreateMaterial(const std::string& name = "Material");
 uint32_t GetDefaultMaterialId();

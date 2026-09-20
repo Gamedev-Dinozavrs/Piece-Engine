@@ -18,6 +18,8 @@ public:
 
     void SetContext(const Ref<Scene>& scene);
     void SelectEntityByUUID(UUID uuid);
+    void SelectHierarchyRootByUUID(UUID uuid);
+    bool SpawnModelFromPath(const std::filesystem::path& sourcePath);
     Entity GetSelectedEntity() const { return m_SelectionContext; }
     void SetSelectedEntity(const Entity& entity) { m_SelectionContext = entity; }
     void OnImGuiRender();
@@ -28,6 +30,7 @@ private:
     bool RestoreImportedChildren(Entity rootEntity);
     void DrawEntityNode(Entity entity);
     void DrawProperties(Entity entity);
+    void DrawAnimatorGraph(Entity entity);
     void BeginRenameEntity(Entity entity);
 
 private:
@@ -40,6 +43,15 @@ private:
     bool m_EditSurfaceFactors = false;
     char m_RenameBuffer[256] = {};
     bool m_OpenRenamePopup = false;
+
+    int32_t m_AnimatorSelectedState = -1;
+    int32_t m_AnimatorSelectedTransition = -1;
+    bool m_AnimatorLinkMode = false;
+    int32_t m_AnimatorLinkFromState = -1;
+    int32_t m_AnimatorDraggingState = -1;
+    float m_AnimatorDragOffsetX = 0.0f;
+    float m_AnimatorDragOffsetY = 0.0f;
+    char m_AnimatorNewParamName[64] = "Param";
 };
 
 } // namespace Piece

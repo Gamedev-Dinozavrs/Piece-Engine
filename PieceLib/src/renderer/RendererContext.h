@@ -194,6 +194,7 @@ struct RendererContext {
     size_t currentFrame{0};
     uint32_t lastRenderedImageIndex{0};
     bool hasRenderedFrame{false};
+    bool swapChainRecreationPending{false};
 
 };
 

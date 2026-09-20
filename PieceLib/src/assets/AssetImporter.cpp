@@ -871,20 +871,27 @@ bool AssetImporter::ImportGLTF(const std::string& path, ImportedModelData& outMo
 
 bool AssetImporter::ImportModel(const std::string& path, ImportedModelData& outModel, std::string* outError) {
     const std::string extension = ToLower(std::filesystem::path(path).extension().string());
+    bool imported = false;
     if (extension == ".obj") {
-        return ImportOBJ(path, outModel, outError);
-    }
-    if (extension == ".gltf" || extension == ".glb") {
-        return ImportGLTF(path, outModel, outError);
-    }
-    if (extension == ".fbx") {
-        return ImportFBX(path, outModel, outError);
+        imported = ImportOBJ(path, outModel, outError);
+    } else if (extension == ".gltf" || extension == ".glb") {
+        imported = ImportGLTF(path, outModel, outError);
+    } else if (extension == ".fbx") {
+        imported = ImportFBX(path, outModel, outError);
+    } else {
+        if (outError) {
+            *outError = "Unsupported model format: " + extension;
+        }
+        return false;
     }
 
-    if (outError) {
-        *outError = "Unsupported model format: " + extension;
+    if (imported) {
+        for (size_t clipIndex = 0; clipIndex < outModel.animations.size(); ++clipIndex) {
+            outModel.animations[clipIndex].sourcePath = path;
+            outModel.animations[clipIndex].sourceClipIndex = static_cast<uint32_t>(clipIndex);
+        }
     }
-    return false;
+    return imported;
 }
 
 } // namespace Piece

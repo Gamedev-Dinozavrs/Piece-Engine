@@ -2,6 +2,7 @@
 
 #include <core/UUID.h>
 #include <assets/AssetImporter.h>
+#include <scene/AnimationGraph.h>
 #include <scene/Camera.h>
 #include <scene/RenderObject.h>
 
@@ -144,10 +145,21 @@ struct AnimatorComponent {
     std::vector<ImportedJoint> joints;
     std::vector<ImportedAnimationClip> clips;
     std::vector<glm::mat4> boneMatrices;
+
+    // Legacy/quick-preview single-clip playback, used only while controller.states is empty.
     uint32_t currentClip{0};
     float time{0.0f};
     float speed{1.0f};
     bool playing{true};
+
+    // Animator state machine. Entirely per-entity: independent clips/parameters/state per instance.
+    AnimatorController controller;
+    int32_t currentState{-1};
+    float stateTime{0.0f};
+    int32_t previousState{-1};
+    float blendElapsed{0.0f};
+    float activeBlendDuration{0.0f};
+    std::vector<glm::mat4> previousBoneMatrices;
 };
 
 } // namespace Piece

@@ -2,6 +2,7 @@
 
 #include "Scene.h"
 
+#include "AnimationSystem.h"
 #include "Components.h"
 #include "Entity.h"
 
@@ -49,6 +50,7 @@ Ref<Scene> Scene::Copy(const Ref<Scene>& other) {
     CopyComponent<HierarchyComponent>(newScene->m_registry, other->m_registry, entityMap);
     CopyComponent<ImportedModelComponent>(newScene->m_registry, other->m_registry, entityMap);
     CopyComponent<MeshRendererComponent>(newScene->m_registry, other->m_registry, entityMap);
+    CopyComponent<MaterialComponent>(newScene->m_registry, other->m_registry, entityMap);
     CopyComponent<DirectionalLightComponent>(newScene->m_registry, other->m_registry, entityMap);
     CopyComponent<PointLightComponent>(newScene->m_registry, other->m_registry, entityMap);
     CopyComponent<SpotLightComponent>(newScene->m_registry, other->m_registry, entityMap);
@@ -58,6 +60,10 @@ Ref<Scene> Scene::Copy(const Ref<Scene>& other) {
 
     newScene->m_entityCount = other->m_entityCount;
     return newScene;
+}
+
+void Scene::OnUpdateRuntime(Timestep timestep) {
+    AnimationSystem::Update(*this, timestep);
 }
 
 Entity Scene::CreateEntity(const std::string& name, UUID uuid) {

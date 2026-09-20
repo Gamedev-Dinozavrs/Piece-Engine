@@ -336,6 +336,17 @@ bool AssetImporter::ImportFBX(const std::string& path, ImportedModelData& outMod
     ImportAnimations(*scene, skeleton, outModel);
     ufbx_free_scene(scene);
 
+    // Mixamo (and many other exporters) always name the animation stack "mixamo.com" or
+    // "Take 001", which makes every imported clip collide. Prefer the source file name instead.
+    const std::string fileStem = std::filesystem::path(path).stem().string();
+    if (outModel.animations.size() == 1) {
+        outModel.animations.front().name = fileStem;
+    } else {
+        for (ImportedAnimationClip& clip : outModel.animations) {
+            clip.name = fileStem + " - " + clip.name;
+        }
+    }
+
     if (outModel.meshes.empty() && outModel.animations.empty()) {
         if (outError) {
             *outError = "FBX parsing succeeded but produced no renderable meshes";

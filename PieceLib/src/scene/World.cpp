@@ -9,6 +9,7 @@
 #include <assets/MaterialAssetSerializer.h>
 
 #include <cctype>
+#include <algorithm>
 
 namespace Piece {
 
@@ -140,6 +141,37 @@ Entity FindEntityByUUID(Scene& scene, UUID uuid) {
     }
 
     return {};
+}
+
+Entity FindHierarchyRoot(Scene& scene, Entity entity) {
+    while (entity && entity.HasComponent<HierarchyComponent>()) {
+        const UUID parentUuid = entity.GetComponent<HierarchyComponent>().parent;
+        if (static_cast<uint64_t>(parentUuid) == 0) {
+            break;
+        }
+        Entity parent = FindEntityByUUID(scene, parentUuid);
+        if (!parent) {
+            break;
+        }
+        entity = parent;
+    }
+    return entity;
+}
+
+void ForEachAnimatorInHierarchy(Scene& scene, Entity entity, const std::function<void(AnimatorComponent&)>& callback) {
+    if (!entity) {
+        return;
+    }
+    if (entity.HasComponent<AnimatorComponent>()) {
+        callback(entity.GetComponent<AnimatorComponent>());
+    }
+    if (!entity.HasComponent<HierarchyComponent>()) {
+        return;
+    }
+    const auto children = entity.GetComponent<HierarchyComponent>().children;
+    for (const UUID& childUuid : children) {
+        ForEachAnimatorInHierarchy(scene, FindEntityByUUID(scene, childUuid), callback);
+    }
 }
 
 void AddChildLink(Scene& scene, const UUID& parentUuid, const UUID& childUuid) {
@@ -525,7 +557,7 @@ bool SetEntityAnimationClips(uint32_t entityId, const std::vector<ImportedAnimat
             continue;
         }
 
-        Entity root{handle, s_ActiveScene.get()};
+        Entity root = FindHierarchyRoot(*s_ActiveScene, Entity{handle, s_ActiveScene.get()});
         bool applied = false;
         std::function<void(Entity)> applyToHierarchy = [&](Entity entity) {
             if (!entity) {
@@ -539,18 +571,35 @@ bool SetEntityAnimationClips(uint32_t entityId, const std::vector<ImportedAnimat
                     targetJoints[animator.joints[jointIndex].name] = static_cast<int32_t>(jointIndex);
                 }
 
-                animator.clips = clips;
-                for (auto& clip : animator.clips) {
+                // Append rather than replace: an entity may accumulate many clips (e.g. Mixamo
+                // walk/run/idle) that feed into its own AnimatorController without clobbering
+                // clips already loaded, and without touching any other entity's animator.
+                for (ImportedAnimationClip clip : clips) {
                     for (auto& channel : clip.channels) {
                         const auto jointIt = targetJoints.find(channel.jointName);
                         if (jointIt != targetJoints.end()) {
                             channel.jointIndex = jointIt->second;
+                        } else {
+                            channel.jointIndex = -1;
                         }
                     }
+
+                    std::string baseName = clip.name.empty() ? "Animation" : clip.name;
+                    std::string uniqueName = baseName;
+                    for (uint32_t suffix = 2; std::any_of(animator.clips.begin(), animator.clips.end(),
+                             [&](const ImportedAnimationClip& existing) { return existing.name == uniqueName; });
+                         ++suffix) {
+                        uniqueName = baseName + " (" + std::to_string(suffix) + ")";
+                    }
+                    clip.name = uniqueName;
+                    animator.clips.push_back(std::move(clip));
                 }
-                animator.currentClip = 0;
-                animator.time = 0.0f;
-                animator.playing = true;
+
+                if (animator.controller.states.empty()) {
+                    animator.currentClip = static_cast<uint32_t>(animator.clips.size() - 1);
+                    animator.time = 0.0f;
+                    animator.playing = true;
+                }
                 applied = true;
             }
 
@@ -567,6 +616,225 @@ bool SetEntityAnimationClips(uint32_t entityId, const std::vector<ImportedAnimat
         return applied;
     }
 
+    return false;
+}
+
+bool SetEntityAnimationPreviewClip(uint32_t entityId, const std::string& clipName) {
+    if (!s_ActiveScene || clipName.empty()) {
+        return false;
+    }
+
+    auto view = s_ActiveScene->GetAllEntitiesViewWith<TagComponent>();
+    for (auto handle : view) {
+        if (static_cast<uint32_t>(handle) != entityId) {
+            continue;
+        }
+
+        bool selected = false;
+        Entity root = FindHierarchyRoot(*s_ActiveScene, Entity{handle, s_ActiveScene.get()});
+        ForEachAnimatorInHierarchy(*s_ActiveScene, root, [&](AnimatorComponent& animator) {
+            const auto clipIt = std::find_if(animator.clips.begin(), animator.clips.end(), [&](const ImportedAnimationClip& clip) {
+                return clip.name == clipName;
+            });
+            if (clipIt == animator.clips.end()) {
+                return;
+            }
+            animator.currentClip = static_cast<uint32_t>(clipIt - animator.clips.begin());
+            animator.time = 0.0f;
+            animator.stateTime = 0.0f;
+            animator.previousState = -1;
+            selected = true;
+        });
+        return selected;
+    }
+    return false;
+}
+
+bool SetEntityAnimationPlayback(uint32_t entityId, bool playing, float speed) {
+    if (!s_ActiveScene) {
+        return false;
+    }
+
+    auto view = s_ActiveScene->GetAllEntitiesViewWith<TagComponent>();
+    for (auto handle : view) {
+        if (static_cast<uint32_t>(handle) != entityId) {
+            continue;
+        }
+
+        bool updated = false;
+        Entity root = FindHierarchyRoot(*s_ActiveScene, Entity{handle, s_ActiveScene.get()});
+        ForEachAnimatorInHierarchy(*s_ActiveScene, root, [&](AnimatorComponent& animator) {
+            animator.playing = playing;
+            animator.speed = speed;
+            updated = true;
+        });
+        return updated;
+    }
+    return false;
+}
+
+bool SetEntityAnimatorController(uint32_t entityId, const AnimatorController& controller) {
+    if (!s_ActiveScene) {
+        return false;
+    }
+
+    auto view = s_ActiveScene->GetAllEntitiesViewWith<TagComponent>();
+    for (auto handle : view) {
+        if (static_cast<uint32_t>(handle) != entityId) {
+            continue;
+        }
+
+        bool updated = false;
+        Entity root = FindHierarchyRoot(*s_ActiveScene, Entity{handle, s_ActiveScene.get()});
+        ForEachAnimatorInHierarchy(*s_ActiveScene, root, [&](AnimatorComponent& animator) {
+            if (&animator.controller != &controller) {
+                animator.controller = controller;
+            }
+            if (animator.currentState >= static_cast<int32_t>(animator.controller.states.size())) {
+                animator.currentState = -1;
+                animator.stateTime = 0.0f;
+            }
+            updated = true;
+        });
+        return updated;
+    }
+    return false;
+}
+
+bool AddEntityAnimationClipSlot(uint32_t entityId) {
+    if (!s_ActiveScene) {
+        return false;
+    }
+
+    auto view = s_ActiveScene->GetAllEntitiesViewWith<TagComponent>();
+    for (auto handle : view) {
+        if (static_cast<uint32_t>(handle) != entityId) {
+            continue;
+        }
+
+        bool added = false;
+        Entity root = FindHierarchyRoot(*s_ActiveScene, Entity{handle, s_ActiveScene.get()});
+        ForEachAnimatorInHierarchy(*s_ActiveScene, root, [&](AnimatorComponent& animator) {
+            ImportedAnimationClip slot{};
+            slot.name = "Empty Clip " + std::to_string(animator.clips.size() + 1);
+            animator.clips.push_back(std::move(slot));
+            added = true;
+        });
+        return added;
+    }
+    return false;
+}
+
+bool SetEntityAnimationClipSlot(uint32_t entityId, size_t slotIndex, const ImportedAnimationClip& sourceClip) {
+    if (!s_ActiveScene) {
+        return false;
+    }
+
+    auto view = s_ActiveScene->GetAllEntitiesViewWith<TagComponent>();
+    for (auto handle : view) {
+        if (static_cast<uint32_t>(handle) != entityId) {
+            continue;
+        }
+
+        bool replaced = false;
+        Entity root = FindHierarchyRoot(*s_ActiveScene, Entity{handle, s_ActiveScene.get()});
+        ForEachAnimatorInHierarchy(*s_ActiveScene, root, [&](AnimatorComponent& animator) {
+            if (slotIndex >= animator.clips.size()) {
+                return;
+            }
+            ImportedAnimationClip clip = sourceClip;
+            std::unordered_map<std::string, int32_t> targetJoints;
+            for (size_t jointIndex = 0; jointIndex < animator.joints.size(); ++jointIndex) {
+                targetJoints[animator.joints[jointIndex].name] = static_cast<int32_t>(jointIndex);
+            }
+            for (ImportedAnimationChannel& channel : clip.channels) {
+                const auto jointIt = targetJoints.find(channel.jointName);
+                channel.jointIndex = jointIt == targetJoints.end() ? -1 : jointIt->second;
+            }
+            const std::string previousName = animator.clips[slotIndex].name;
+            animator.clips[slotIndex] = std::move(clip);
+            for (AnimationState& state : animator.controller.states) {
+                if (state.clipName == previousName) {
+                    state.clipName = animator.clips[slotIndex].name;
+                }
+            }
+            replaced = true;
+        });
+        return replaced;
+    }
+    return false;
+}
+
+bool RenameEntityAnimationClip(uint32_t entityId, const std::string& oldName, const std::string& newName) {
+    if (!s_ActiveScene || oldName.empty() || newName.empty()) {
+        return false;
+    }
+
+    auto view = s_ActiveScene->GetAllEntitiesViewWith<TagComponent>();
+    for (auto handle : view) {
+        if (static_cast<uint32_t>(handle) != entityId) {
+            continue;
+        }
+
+        bool renamed = false;
+        Entity root = FindHierarchyRoot(*s_ActiveScene, Entity{handle, s_ActiveScene.get()});
+        ForEachAnimatorInHierarchy(*s_ActiveScene, root, [&](AnimatorComponent& animator) {
+            for (ImportedAnimationClip& clip : animator.clips) {
+                if (clip.name == oldName) {
+                    clip.name = newName;
+                    renamed = true;
+                }
+            }
+            for (AnimationState& state : animator.controller.states) {
+                if (state.clipName == oldName) {
+                    state.clipName = newName;
+                }
+            }
+        });
+        return renamed;
+    }
+    return false;
+}
+
+bool RemoveEntityAnimationClip(uint32_t entityId, const std::string& clipName) {
+    if (!s_ActiveScene || clipName.empty()) {
+        return false;
+    }
+
+    auto view = s_ActiveScene->GetAllEntitiesViewWith<TagComponent>();
+    for (auto handle : view) {
+        if (static_cast<uint32_t>(handle) != entityId) {
+            continue;
+        }
+
+        bool removed = false;
+        Entity root = FindHierarchyRoot(*s_ActiveScene, Entity{handle, s_ActiveScene.get()});
+        ForEachAnimatorInHierarchy(*s_ActiveScene, root, [&](AnimatorComponent& animator) {
+            for (size_t clipIndex = 0; clipIndex < animator.clips.size();) {
+                if (animator.clips[clipIndex].name != clipName) {
+                    ++clipIndex;
+                    continue;
+                }
+                animator.clips.erase(animator.clips.begin() + static_cast<std::ptrdiff_t>(clipIndex));
+                if (animator.currentClip > clipIndex) {
+                    --animator.currentClip;
+                }
+                removed = true;
+            }
+            if (animator.clips.empty()) {
+                animator.currentClip = 0;
+                animator.time = 0.0f;
+            } else {
+                animator.currentClip = std::min(animator.currentClip, static_cast<uint32_t>(animator.clips.size() - 1));
+            }
+            for (AnimationState& state : animator.controller.states) {
+                if (state.clipName == clipName) {
+                    state.clipName.clear();
+                }
+            }
+        });
+        return removed;
+    }
     return false;
 }
 

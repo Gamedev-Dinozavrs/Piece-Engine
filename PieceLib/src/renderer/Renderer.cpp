@@ -697,6 +697,13 @@ namespace Piece
         RendererContext &ctx = *s_Context;
         ctx.scene = World::GetActiveScene();
 
+        if (ctx.swapChainRecreationPending)
+        {
+            ctx.swapChainRecreationPending = false;
+            RecreateSwapChain();
+            return;
+        }
+
         const EnvironmentSettings environment = World::GetEnvironmentSettings();
         const VkSampleCountFlagBits desiredMsaa = ResolveMsaaSamples(ctx.deviceWrapper->m_PhysicalDeviceProperties, environment.aaTechnique, environment.msaaSampleCount);
         if (desiredMsaa != ctx.msaaSamples)
@@ -797,11 +804,6 @@ namespace Piece
 
         RendererContext &ctx = *s_Context;
 
-        if (ctx.scene)
-        {
-            AnimationSystem::Update(*ctx.scene, ts);
-        }
-
         if (ctx.camera)
         {
             if (ImGui::GetCurrentContext() != nullptr)
@@ -841,7 +843,7 @@ namespace Piece
             s_Context->scene->OnViewportResize(width, height);
         }
 
-        RecreateSwapChain();
+        s_Context->swapChainRecreationPending = true;
     }
 
     bool Renderer::OnMouseScrolled(MouseScrolledEvent &event)

@@ -123,16 +123,16 @@ AssetTileKind GetAssetTileKind(const std::filesystem::path& path) {
 }
 
 void DrawAssetTileIcon(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, AssetTileKind kind, bool selected) {
-    const ImU32 background = selected ? IM_COL32(44, 76, 104, 255) : IM_COL32(31, 39, 48, 255);
-    const ImU32 outline = selected ? IM_COL32(255, 214, 96, 255) : IM_COL32(94, 113, 132, 255);
-    const ImU32 accent = kind == AssetTileKind::Material ? IM_COL32(222, 174, 91, 255)
-        : kind == AssetTileKind::Model ? IM_COL32(102, 180, 219, 255)
-        : kind == AssetTileKind::Scene ? IM_COL32(154, 188, 220, 255)
-        : kind == AssetTileKind::Texture ? IM_COL32(104, 188, 132, 255)
-        : kind == AssetTileKind::Animation ? IM_COL32(211, 126, 188, 255)
-        : IM_COL32(191, 157, 85, 255);
-    drawList->AddRectFilled(min, max, background, 6.0f);
-    drawList->AddRect(min, max, outline, 6.0f, 0, selected ? 2.5f : 1.0f);
+    const ImU32 background = selected ? IM_COL32(35, 48, 64, 255) : IM_COL32(18, 27, 39, 255);
+    const ImU32 outline = selected ? IM_COL32(244, 118, 34, 255) : IM_COL32(48, 65, 84, 255);
+    const ImU32 accent = kind == AssetTileKind::Material ? IM_COL32(242, 145, 62, 255)
+        : kind == AssetTileKind::Model ? IM_COL32(225, 102, 31, 255)
+        : kind == AssetTileKind::Scene ? IM_COL32(255, 167, 77, 255)
+        : kind == AssetTileKind::Texture ? IM_COL32(201, 91, 31, 255)
+        : kind == AssetTileKind::Animation ? IM_COL32(247, 128, 45, 255)
+        : IM_COL32(230, 151, 72, 255);
+    drawList->AddRectFilled(min, max, background, 4.0f);
+    drawList->AddRect(min, max, outline, 4.0f, 0, selected ? 2.0f : 1.0f);
 
     const ImVec2 center((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f);
     if (kind == AssetTileKind::Material) {
@@ -175,7 +175,7 @@ void DrawAssetTile(const char* id, const std::string& label, AssetTileKind kind,
     const ImVec2 iconMin(min.x + 8.0f, min.y + 8.0f);
     const ImVec2 iconMax(max.x - 8.0f, min.y + 64.0f);
     DrawAssetTileIcon(ImGui::GetWindowDrawList(), iconMin, iconMax, kind, selected);
-    ImGui::GetWindowDrawList()->AddText(ImVec2(min.x + 8.0f, min.y + 72.0f), IM_COL32(232, 238, 244, 255), label.c_str());
+    ImGui::GetWindowDrawList()->AddText(ImVec2(min.x + 8.0f, min.y + 72.0f), IM_COL32(224, 231, 238, 255), label.c_str());
 }
 
 } // namespace
@@ -198,8 +198,16 @@ void ContentBrowserPanel::OnImGuiRender() {
     }
 
     DrawAssetToolbar();
+
+    constexpr float folderTreeWidth = 180.0f;
+    ImGui::BeginChild("##AssetFolderTree", ImVec2(folderTreeWidth, 0.0f), ImGuiChildFlags_Borders);
+    ImGui::TextUnformatted("Folders");
+    ImGui::Separator();
+    DrawDirectoryTree(m_AssetsDirectory);
+    ImGui::EndChild();
+    ImGui::SameLine();
+    ImGui::BeginChild("##AssetContents", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders);
     DrawFilesystemAssets();
-    DrawUploadedTemplates();
 
     if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_F2) && m_SelectedMaterialId != 0) {
         const auto materials = World::GetMaterials();
@@ -213,13 +221,17 @@ void ContentBrowserPanel::OnImGuiRender() {
 
     bool openCreateMaterialPopup = false;
     if (ImGui::BeginPopupContextWindow("ContentBrowserEmptySpace", ImGuiPopupFlags_NoOpenOverItems)) {
-        EditorPlacement::DrawCreateMenu();
+        if (ImGui::MenuItem("Import Model...")) {
+            ImportModelAsset();
+        }
+        ImGui::Separator();
         if (ImGui::MenuItem("Create Material")) {
             std::snprintf(m_CreateMaterialBuffer, sizeof(m_CreateMaterialBuffer), "%s", "Material");
             openCreateMaterialPopup = true;
         }
         ImGui::EndPopup();
     }
+    ImGui::EndChild();
 
     if (openCreateMaterialPopup) {
         ImGui::OpenPopup("Create Material");
@@ -265,12 +277,18 @@ void ContentBrowserPanel::OnImGuiRender() {
 }
 
 void ContentBrowserPanel::DrawAssetToolbar() {
-    ImGui::Text("Asset Root: %s", m_AssetsDirectory.string().c_str());
-    ImGui::TextDisabled("Current: %s", m_CurrentDirectory.string().c_str());
+    std::error_code relativeError;
+    const std::filesystem::path relative = std::filesystem::relative(m_CurrentDirectory, m_AssetsDirectory, relativeError);
+    const std::string breadcrumb = relativeError || relative.empty() || relative == "."
+        ? "Assets"
+        : "Assets / " + relative.generic_string();
     if (m_CurrentDirectory != m_AssetsDirectory && ImGui::SmallButton("Up##AssetDirectory")) {
         m_CurrentDirectory = m_CurrentDirectory.parent_path();
     }
-    ImGui::TextDisabled("Drag a material card onto an entity's Material Slot.");
+    if (m_CurrentDirectory != m_AssetsDirectory) {
+        ImGui::SameLine();
+    }
+    ImGui::TextUnformatted(breadcrumb.c_str());
 
     if (!m_StatusMessage.empty()) {
         if (m_StatusIsError) {
@@ -281,10 +299,37 @@ void ContentBrowserPanel::DrawAssetToolbar() {
 
     }
 
-    if (ImGui::Button("Upload Model Placeholder")) {
-        UploadModelTemplate();
-    }
+}
 
+void ContentBrowserPanel::DrawDirectoryTree(const std::filesystem::path& directory) {
+    std::error_code error;
+    std::vector<std::filesystem::path> children;
+    for (const auto& entry : std::filesystem::directory_iterator(directory, error)) {
+        if (!error && entry.is_directory()) {
+            children.push_back(entry.path());
+        }
+    }
+    std::sort(children.begin(), children.end(), [](const auto& left, const auto& right) {
+        return ToLower(left.filename().string()) < ToLower(right.filename().string());
+    });
+
+    const bool selected = directory == m_CurrentDirectory;
+    ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
+    if (selected) flags |= ImGuiTreeNodeFlags_Selected;
+    if (children.empty()) flags |= ImGuiTreeNodeFlags_Leaf;
+    if (directory == m_AssetsDirectory) flags |= ImGuiTreeNodeFlags_DefaultOpen;
+    const std::string label = directory == m_AssetsDirectory ? "Assets" : directory.filename().string();
+    const bool open = ImGui::TreeNodeEx(directory.string().c_str(), flags, "%s", label.c_str());
+    if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
+        m_CurrentDirectory = directory;
+        m_SelectedAssetPath.clear();
+    }
+    if (open) {
+        for (const auto& child : children) {
+            DrawDirectoryTree(child);
+        }
+        ImGui::TreePop();
+    }
 }
 
 void ContentBrowserPanel::DrawFilesystemAssets() {
@@ -304,8 +349,6 @@ void ContentBrowserPanel::DrawFilesystemAssets() {
         return ToLower(left.filename().string()) < ToLower(right.filename().string());
     });
 
-    ImGui::Separator();
-    ImGui::TextUnformatted("Assets");
     if (entries.empty()) {
         ImGui::TextDisabled("This folder is empty.");
         return;
@@ -324,16 +367,33 @@ void ContentBrowserPanel::DrawFilesystemAssets() {
                 if (std::filesystem::is_directory(path)) {
                     m_CurrentDirectory = path;
                 } else if (IsSupportedModelFile(path)) {
-                    UploadedObjTemplate uploaded{};
-                    uploaded.name = path.stem().string();
-                    uploaded.sourcePath = path;
-                    m_UploadedObjTemplates.push_back(std::move(uploaded));
-                    SpawnUploadedTemplate(m_UploadedObjTemplates.size() - 1);
+                    if (m_ModelSpawnCallback) {
+                        m_ModelSpawnCallback(path);
+                    }
                 } else if (ToLower(path.extension().string()) == ".piecescene") {
                     m_StatusMessage = "Scene selected: " + path.filename().string();
                     m_StatusIsError = false;
                 }
             }
+        }
+        if (IsSupportedModelFile(path) && ImGui::BeginDragDropSource()) {
+            const std::string pathString = path.string();
+            ImGui::SetDragDropPayload("UPLOADED_OBJ_TEMPLATE", pathString.c_str(), pathString.size() + 1);
+            ImGui::TextUnformatted(path.stem().string().c_str());
+            ImGui::EndDragDropSource();
+        }
+        if (ToLower(path.extension().string()) == ".piece-material" && ImGui::BeginDragDropSource()) {
+            const std::string normalizedPath = NormalizeKey(path);
+            const auto materials = World::GetMaterials();
+            const auto materialIt = std::find_if(materials.begin(), materials.end(), [&](const MaterialView& material) {
+                return NormalizeKey(material.assetPath) == normalizedPath;
+            });
+            if (materialIt != materials.end()) {
+                const uint32_t materialId = materialIt->id;
+                ImGui::SetDragDropPayload("MATERIAL_ASSET", &materialId, sizeof(materialId));
+                ImGui::TextUnformatted(materialIt->name.c_str());
+            }
+            ImGui::EndDragDropSource();
         }
         ImGui::PopID();
         if (static_cast<int>((index + 1) % static_cast<size_t>(columnCount)) != 0) {
@@ -524,7 +584,7 @@ void ContentBrowserPanel::DrawUploadedTemplates() {
     }
 }
 
-void ContentBrowserPanel::UploadModelTemplate() {
+void ContentBrowserPanel::ImportModelAsset() {
     const char* modelFilter = "Model Files\0*.obj;*.gltf;*.glb;*.fbx\0All Files\0*.*\0";
     Platform::OpenFileDialogAsync(modelFilter, [this](std::string selectedPath) {
         if (selectedPath.empty()) {
@@ -539,7 +599,7 @@ void ContentBrowserPanel::UploadModelTemplate() {
             }
 
             if (!IsSupportedModelFile(source)) {
-                m_StatusMessage = "Upload failed: unsupported format. Use .obj, .gltf or .glb";
+                m_StatusMessage = "Import failed: unsupported format. Use .obj, .gltf, .glb or .fbx";
                 m_StatusIsError = true;
                 return;
             }
@@ -556,14 +616,14 @@ void ContentBrowserPanel::UploadModelTemplate() {
             std::filesystem::path importedModel = source;
             if (!alreadyInAssets) {
                 const std::filesystem::path sourceDir = source.parent_path();
-                const std::filesystem::path targetDir = m_AssetsDirectory / source.stem();
+                const std::filesystem::path targetDir = m_CurrentDirectory / source.stem();
                 CopyDirectoryContents(sourceDir, targetDir);
                 importedModel = targetDir / source.filename();
             }
 
             if (!std::filesystem::exists(importedModel)) {
                 PIECE_ERROR("Imported model missing after copy: {}", importedModel.string());
-                m_StatusMessage = "Upload failed: copied files but model path was not found.";
+                m_StatusMessage = "Import failed: copied files but model path was not found.";
                 m_StatusIsError = true;
                 return;
             }
@@ -573,11 +633,13 @@ void ContentBrowserPanel::UploadModelTemplate() {
             uploaded.sourcePath = importedModel;
             m_UploadedObjTemplates.push_back(std::move(uploaded));
             m_SelectedUploadedTemplate = static_cast<int>(m_UploadedObjTemplates.size()) - 1;
-            m_StatusMessage = "Uploaded model placeholder: " + source.filename().string();
+            m_CurrentDirectory = importedModel.parent_path();
+            m_SelectedAssetPath = importedModel;
+            m_StatusMessage = "Imported " + source.filename().string() + ".";
             m_StatusIsError = false;
         } catch (const std::exception& ex) {
             PIECE_ERROR("Failed importing model into assets: {}", ex.what());
-            m_StatusMessage = "Upload failed. Check filename/path and try again.";
+            m_StatusMessage = "Import failed. Check filename/path and try again.";
             m_StatusIsError = true;
         }
     });
@@ -599,14 +661,8 @@ void ContentBrowserPanel::SpawnUploadedTemplate(size_t index) {
         return;
     }
 
-    if (!model.animations.empty()) {
-        if (m_AnimationTargetId == 0 || !World::SetEntityAnimationClips(m_AnimationTargetId, model.animations)) {
-            m_StatusMessage = "Animation loaded, but select the X Bot root first.";
-            m_StatusIsError = true;
-            return;
-        }
-
-        m_StatusMessage = "Applied animation: " + templateInfo.name + ".";
+    if (model.meshes.empty() && !model.animations.empty()) {
+        m_StatusMessage = "Animation asset: drag it onto an empty slot in the Animator component.";
         m_StatusIsError = false;
         return;
     }

@@ -196,6 +196,157 @@ void DeserializeWorldSettings(const YAML::Node& root) {
     }
 }
 
+void SerializeAnimator(YAML::Emitter& out, const AnimatorComponent& animator) {
+    out << YAML::Key << "AnimatorComponent" << YAML::Value << YAML::BeginMap;
+    out << YAML::Key << "Playing" << YAML::Value << animator.playing;
+    out << YAML::Key << "Speed" << YAML::Value << animator.speed;
+    out << YAML::Key << "Clips" << YAML::Value << YAML::BeginSeq;
+    for (const ImportedAnimationClip& clip : animator.clips) {
+        out << YAML::BeginMap;
+        out << YAML::Key << "Name" << YAML::Value << clip.name;
+        out << YAML::Key << "SourcePath" << YAML::Value << clip.sourcePath;
+        out << YAML::Key << "SourceClipIndex" << YAML::Value << clip.sourceClipIndex;
+        out << YAML::EndMap;
+    }
+    out << YAML::EndSeq;
+
+    const AnimatorController& controller = animator.controller;
+    out << YAML::Key << "EntryState" << YAML::Value << controller.entryState;
+    out << YAML::Key << "Parameters" << YAML::Value << YAML::BeginSeq;
+    for (const AnimationParameter& parameter : controller.parameters) {
+        out << YAML::BeginMap;
+        out << YAML::Key << "Name" << YAML::Value << parameter.name;
+        out << YAML::Key << "Type" << YAML::Value << static_cast<int>(parameter.type);
+        out << YAML::Key << "FloatValue" << YAML::Value << parameter.floatValue;
+        out << YAML::Key << "BoolValue" << YAML::Value << parameter.boolValue;
+        out << YAML::Key << "KeyCode" << YAML::Value << parameter.keyCode;
+        out << YAML::EndMap;
+    }
+    out << YAML::EndSeq;
+
+    out << YAML::Key << "States" << YAML::Value << YAML::BeginSeq;
+    for (const AnimationState& state : controller.states) {
+        out << YAML::BeginMap;
+        out << YAML::Key << "Name" << YAML::Value << state.name;
+        out << YAML::Key << "ClipName" << YAML::Value << state.clipName;
+        out << YAML::Key << "Speed" << YAML::Value << state.speed;
+        out << YAML::Key << "Loop" << YAML::Value << state.loop;
+        out << YAML::Key << "CanvasX" << YAML::Value << state.canvasX;
+        out << YAML::Key << "CanvasY" << YAML::Value << state.canvasY;
+        out << YAML::EndMap;
+    }
+    out << YAML::EndSeq;
+
+    out << YAML::Key << "Transitions" << YAML::Value << YAML::BeginSeq;
+    for (const AnimationTransition& transition : controller.transitions) {
+        out << YAML::BeginMap;
+        out << YAML::Key << "FromState" << YAML::Value << transition.fromState;
+        out << YAML::Key << "ToState" << YAML::Value << transition.toState;
+        out << YAML::Key << "HasExitTime" << YAML::Value << transition.hasExitTime;
+        out << YAML::Key << "ExitTime" << YAML::Value << transition.exitTime;
+        out << YAML::Key << "BlendDuration" << YAML::Value << transition.blendDuration;
+        out << YAML::Key << "Conditions" << YAML::Value << YAML::BeginSeq;
+        for (const AnimationCondition& condition : transition.conditions) {
+            out << YAML::BeginMap;
+            out << YAML::Key << "Parameter" << YAML::Value << condition.parameterName;
+            out << YAML::Key << "Comparison" << YAML::Value << static_cast<int>(condition.comparison);
+            out << YAML::Key << "Threshold" << YAML::Value << condition.threshold;
+            out << YAML::EndMap;
+        }
+        out << YAML::EndSeq;
+        out << YAML::EndMap;
+    }
+    out << YAML::EndSeq;
+    out << YAML::EndMap;
+}
+
+void DeserializeAnimator(const YAML::Node& node, AnimatorComponent& animator) {
+    animator.playing = node["Playing"].as<bool>(true);
+    animator.speed = node["Speed"].as<float>(1.0f);
+    animator.clips.clear();
+    if (const YAML::Node clips = node["Clips"]) {
+        for (const YAML::Node& clipNode : clips) {
+            ImportedAnimationClip clip{};
+            clip.name = clipNode["Name"].as<std::string>("Empty Clip");
+            clip.sourcePath = clipNode["SourcePath"].as<std::string>("");
+            clip.sourceClipIndex = clipNode["SourceClipIndex"].as<uint32_t>(0);
+            if (!clip.sourcePath.empty()) {
+                ImportedModelData sourceModel;
+                std::string error;
+                if (AssetImporter::ImportModel(clip.sourcePath, sourceModel, &error)
+                    && clip.sourceClipIndex < sourceModel.animations.size()) {
+                    ImportedAnimationClip imported = sourceModel.animations[clip.sourceClipIndex];
+                    imported.name = clip.name;
+                    clip = std::move(imported);
+                    std::unordered_map<std::string, int32_t> targetJoints;
+                    for (size_t jointIndex = 0; jointIndex < animator.joints.size(); ++jointIndex) {
+                        targetJoints[animator.joints[jointIndex].name] = static_cast<int32_t>(jointIndex);
+                    }
+                    for (ImportedAnimationChannel& channel : clip.channels) {
+                        const auto jointIt = targetJoints.find(channel.jointName);
+                        channel.jointIndex = jointIt == targetJoints.end() ? -1 : jointIt->second;
+                    }
+                } else {
+                    PIECE_CORE_WARN("SceneSerializer: failed to restore animation clip from '{0}': {1}", clip.sourcePath, error);
+                }
+            }
+            animator.clips.push_back(std::move(clip));
+        }
+    }
+
+    AnimatorController& controller = animator.controller;
+    controller = {};
+    controller.entryState = node["EntryState"].as<int32_t>(-1);
+    if (const YAML::Node parameters = node["Parameters"]) {
+        for (const YAML::Node& parameterNode : parameters) {
+            AnimationParameter parameter{};
+            parameter.name = parameterNode["Name"].as<std::string>("");
+            parameter.type = static_cast<AnimationParameterType>(parameterNode["Type"].as<int>(0));
+            parameter.floatValue = parameterNode["FloatValue"].as<float>(0.0f);
+            parameter.boolValue = parameterNode["BoolValue"].as<bool>(false);
+            parameter.keyCode = parameterNode["KeyCode"].as<int32_t>(0);
+            controller.parameters.push_back(std::move(parameter));
+        }
+    }
+    if (const YAML::Node states = node["States"]) {
+        for (const YAML::Node& stateNode : states) {
+            AnimationState state{};
+            state.name = stateNode["Name"].as<std::string>("State");
+            state.clipName = stateNode["ClipName"].as<std::string>("");
+            state.speed = stateNode["Speed"].as<float>(1.0f);
+            state.loop = stateNode["Loop"].as<bool>(true);
+            state.canvasX = stateNode["CanvasX"].as<float>(20.0f);
+            state.canvasY = stateNode["CanvasY"].as<float>(20.0f);
+            controller.states.push_back(std::move(state));
+        }
+    }
+    if (const YAML::Node transitions = node["Transitions"]) {
+        for (const YAML::Node& transitionNode : transitions) {
+            AnimationTransition transition{};
+            transition.fromState = transitionNode["FromState"].as<int32_t>(-1);
+            transition.toState = transitionNode["ToState"].as<int32_t>(-1);
+            transition.hasExitTime = transitionNode["HasExitTime"].as<bool>(false);
+            transition.exitTime = transitionNode["ExitTime"].as<float>(1.0f);
+            transition.blendDuration = transitionNode["BlendDuration"].as<float>(0.15f);
+            if (const YAML::Node conditions = transitionNode["Conditions"]) {
+                for (const YAML::Node& conditionNode : conditions) {
+                    AnimationCondition condition{};
+                    condition.parameterName = conditionNode["Parameter"].as<std::string>("");
+                    condition.comparison = static_cast<AnimationComparison>(conditionNode["Comparison"].as<int>(0));
+                    condition.threshold = conditionNode["Threshold"].as<float>(0.0f);
+                    transition.conditions.push_back(std::move(condition));
+                }
+            }
+            controller.transitions.push_back(std::move(transition));
+        }
+    }
+    animator.currentClip = 0;
+    animator.time = 0.0f;
+    animator.currentState = -1;
+    animator.stateTime = 0.0f;
+    animator.boneMatrices.assign(animator.joints.size(), glm::mat4(1.0f));
+}
+
 void SerializeEntity(YAML::Emitter& out, Entity entity) {
     out << YAML::BeginMap;
     out << YAML::Key << "Entity" << YAML::Value << static_cast<uint64_t>(entity.getUUID());
@@ -254,7 +405,13 @@ void SerializeEntity(YAML::Emitter& out, Entity entity) {
         out << YAML::BeginMap;
         out << YAML::Key << "SourcePath" << YAML::Value << imported.sourcePath;
         out << YAML::Key << "MeshName" << YAML::Value << imported.meshName;
+        out << YAML::Key << "Mode" << YAML::Value << static_cast<int>(imported.mode);
+        out << YAML::Key << "Grouped" << YAML::Value << imported.grouped;
         out << YAML::EndMap;
+    }
+
+    if (entity.HasComponent<AnimatorComponent>()) {
+        SerializeAnimator(out, entity.GetComponent<AnimatorComponent>());
     }
 
     if (entity.HasComponent<MaterialComponent>()) {
@@ -434,6 +591,8 @@ bool SceneSerializer::Deserialize(const std::string& filepath) {
                 auto& imported = deserializedEntity.AddComponent<ImportedModelComponent>();
                 imported.sourcePath = importedNode["SourcePath"].as<std::string>("");
                 imported.meshName = importedNode["MeshName"].as<std::string>("");
+                imported.mode = static_cast<ImportGroupMode>(importedNode["Mode"].as<int>(0));
+                imported.grouped = importedNode["Grouped"].as<bool>(true);
                 importedSourcePath = imported.sourcePath;
                 importedMeshName = imported.meshName;
                 std::string importError;
@@ -464,6 +623,13 @@ bool SceneSerializer::Deserialize(const std::string& filepath) {
                         }
                     }
                 }
+            }
+
+            if (auto animatorNode = entityNode["AnimatorComponent"]) {
+                auto& animator = deserializedEntity.HasComponent<AnimatorComponent>()
+                    ? deserializedEntity.GetComponent<AnimatorComponent>()
+                    : deserializedEntity.AddComponent<AnimatorComponent>();
+                DeserializeAnimator(animatorNode, animator);
             }
 
             if (auto materialNode = entityNode["MaterialComponent"]) {
@@ -513,6 +679,43 @@ bool SceneSerializer::Deserialize(const std::string& filepath) {
                 environment.aaTechnique = environmentNode["AATechnique"].as<uint32_t>(1);
                 environment.msaaSampleCount = environmentNode["MsaaSampleCount"].as<uint32_t>(4);
             }
+        }
+    }
+
+    auto meshView = m_Scene->GetAllEntitiesViewWith<MeshRendererComponent, HierarchyComponent, TagComponent>();
+    for (auto handle : meshView) {
+        Entity child{handle, m_Scene.get()};
+        auto& meshRenderer = child.GetComponent<MeshRendererComponent>();
+        if (meshRenderer.primitiveType != PrimitiveType::Unknown || meshRenderer.mesh
+            || child.HasComponent<ImportedModelComponent>()) {
+            continue;
+        }
+
+        const UUID parentUuid = child.GetComponent<HierarchyComponent>().parent;
+        if (static_cast<uint64_t>(parentUuid) == 0) {
+            continue;
+        }
+        Entity parent{};
+        auto tagView = m_Scene->GetAllEntitiesViewWith<TagComponent>();
+        for (auto candidate : tagView) {
+            if (tagView.get<TagComponent>(candidate).id == parentUuid) {
+                parent = Entity{candidate, m_Scene.get()};
+                break;
+            }
+        }
+        if (!parent || !parent.HasComponent<ImportedModelComponent>()) {
+            continue;
+        }
+
+        const auto& parentImported = parent.GetComponent<ImportedModelComponent>();
+        auto& imported = child.AddComponent<ImportedModelComponent>();
+        imported.sourcePath = parentImported.sourcePath;
+        imported.meshName = child.GetComponent<TagComponent>().tag;
+        imported.mode = parentImported.mode;
+        imported.grouped = true;
+        meshRenderer.mesh = ReimportMesh(imported.sourcePath, imported.meshName);
+        if (parent.HasComponent<AnimatorComponent>() && !child.HasComponent<AnimatorComponent>()) {
+            child.AddComponent<AnimatorComponent>(parent.GetComponent<AnimatorComponent>());
         }
     }
 

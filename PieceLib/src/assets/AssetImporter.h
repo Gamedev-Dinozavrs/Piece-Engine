@@ -34,6 +34,8 @@ struct ImportedAnimationChannel {
 
 struct ImportedAnimationClip {
     std::string name;
+    std::string sourcePath;
+    uint32_t sourceClipIndex{0};
     float duration{0.0f};
     std::vector<ImportedAnimationChannel> channels;
 };

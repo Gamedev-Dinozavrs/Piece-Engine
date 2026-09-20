@@ -6,6 +6,7 @@
 #include "imgui_internal.h"
 
 #include <assets/AssetImporter.h>
+#include <core/KeyCodes.h>
 #include <core/Log.h>
 #include <renderer/Renderer.h>
 #include <scene/Components.h>
@@ -16,6 +17,9 @@
 #include <cstdio>
 #include <exception>
 #include <filesystem>
+#include <algorithm>
+#include <cmath>
+#include <vector>
 
 namespace Piece {
 
@@ -186,6 +190,26 @@ void SceneHierarchyPanel::SelectEntityByUUID(UUID uuid) {
     m_SelectionContext = FindEntityByUUID(m_Context, uuid);
 }
 
+void SceneHierarchyPanel::SelectHierarchyRootByUUID(UUID uuid) {
+    Entity entity = FindEntityByUUID(m_Context, uuid);
+    while (entity && entity.HasComponent<HierarchyComponent>()) {
+        const UUID parentUuid = entity.GetComponent<HierarchyComponent>().parent;
+        if (static_cast<uint64_t>(parentUuid) == 0) {
+            break;
+        }
+        Entity parent = FindEntityByUUID(m_Context, parentUuid);
+        if (!parent) {
+            break;
+        }
+        entity = parent;
+    }
+    m_SelectionContext = entity;
+}
+
+bool SceneHierarchyPanel::SpawnModelFromPath(const std::filesystem::path& sourcePath) {
+    return SpawnObjFromPath(sourcePath, sourcePath.stem().string());
+}
+
 void SceneHierarchyPanel::OnImGuiRender() {
     ImGui::Begin("Hierarchy");
 
@@ -308,6 +332,12 @@ bool SceneHierarchyPanel::SpawnObjFromPath(const std::filesystem::path& sourcePa
         return false;
     }
 
+    if (model.meshes.empty() && !model.animations.empty()) {
+        m_ObjStatusMessage = "Animation asset: create an Animator clip slot and drag this asset onto it.";
+        m_ObjStatusIsError = false;
+        return false;
+    }
+
     std::unordered_map<int, uint32_t> importerMatToWorldMat;
     importerMatToWorldMat.reserve(model.materials.size());
     for (size_t i = 0; i < model.materials.size(); ++i) {
@@ -373,6 +403,7 @@ bool SceneHierarchyPanel::SpawnObjFromPath(const std::filesystem::path& sourcePa
                 if (itMat != importerMatToWorldMat.end()) {
                     World::SetEntityMaterial(entityId, itMat->second);
                 }
+                World::SetEntityImportedModelInfo(entityId, sourcePath.string(), meshData.name);
                 if (!model.joints.empty()) {
                     World::SetEntityAnimationData(entityId, model.joints, model.animations);
                 }
@@ -392,6 +423,7 @@ bool SceneHierarchyPanel::SpawnObjFromPath(const std::filesystem::path& sourcePa
 
     m_ObjStatusMessage = "Created model root with " + std::to_string(spawnedCount) + " mesh child(ren).";
     m_ObjStatusIsError = false;
+    m_SelectionContext = rootEntity;
     return true;
 }
 
@@ -626,6 +658,10 @@ bool SceneHierarchyPanel::RestoreImportedChildren(Entity rootEntity) {
             auto itMat = importerMatToWorldMat.find(meshData.materialIndex);
             if (itMat != importerMatToWorldMat.end()) {
                 World::SetEntityMaterial(entityId, itMat->second);
+            }
+            World::SetEntityImportedModelInfo(entityId, imported.sourcePath, meshData.name);
+            if (!model.joints.empty()) {
+                World::SetEntityAnimationData(entityId, model.joints, model.animations);
             }
             ++spawnedCount;
         } catch (const std::exception& ex) {
@@ -1039,10 +1075,17 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
             auto& animator = entity.GetComponent<AnimatorComponent>();
             ImGui::Text("Joints: %zu", animator.joints.size());
             ImGui::Text("Clips: %zu", animator.clips.size());
-            ImGui::Checkbox("Playing", &animator.playing);
-            ImGui::DragFloat("Speed", &animator.speed, 0.01f, -4.0f, 4.0f);
+            bool playing = animator.playing;
+            if (ImGui::Checkbox("Playing", &playing)) {
+                World::SetEntityAnimationPlayback(static_cast<uint32_t>(entity), playing, animator.speed);
+            }
+            float speed = animator.speed;
+            if (ImGui::DragFloat("Speed", &speed, 0.01f, -4.0f, 4.0f)) {
+                World::SetEntityAnimationPlayback(static_cast<uint32_t>(entity), animator.playing, speed);
+            }
 
-            if (!animator.clips.empty()) {
+            if (animator.controller.states.empty() && !animator.clips.empty()) {
+                ImGui::TextUnformatted("Quick Preview Clip (no graph yet)");
                 animator.currentClip = std::min(
                     animator.currentClip,
                     static_cast<uint32_t>(animator.clips.size() - 1));
@@ -1053,11 +1096,20 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
                 }
                 int selectedClip = static_cast<int>(animator.currentClip);
                 if (ImGui::Combo("Clip", &selectedClip, clipNames.data(), static_cast<int>(clipNames.size()))) {
-                    animator.currentClip = static_cast<uint32_t>(selectedClip);
-                    animator.time = 0.0f;
+                    World::SetEntityAnimationPreviewClip(
+                        static_cast<uint32_t>(entity), animator.clips[static_cast<size_t>(selectedClip)].name);
                 }
-                ImGui::Text("Time: %.2f / %.2f", animator.time, animator.clips[animator.currentClip].duration);
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Remove Selected")) {
+                    const std::string clipName = animator.clips[animator.currentClip].name;
+                    World::RemoveEntityAnimationClip(static_cast<uint32_t>(entity), clipName);
+                }
+                if (!animator.clips.empty()) {
+                    ImGui::Text("Time: %.2f / %.2f", animator.time, animator.clips[animator.currentClip].duration);
+                }
             }
+
+            DrawAnimatorGraph(entity);
 
             ImGui::TreePop();
         }
@@ -1071,6 +1123,545 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
             ImGui::TreePop();
         }
     }
+}
+
+void SceneHierarchyPanel::DrawAnimatorGraph(Entity entity) {
+    auto& animator = entity.GetComponent<AnimatorComponent>();
+    AnimatorController& controller = animator.controller;
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Parameters");
+    for (size_t i = 0; i < controller.parameters.size();) {
+        ImGui::PushID(static_cast<int>(100 + i));
+        AnimationParameter& param = controller.parameters[i];
+        char nameBuffer[64];
+        std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", param.name.c_str());
+        ImGui::SetNextItemWidth(120.0f);
+        if (ImGui::InputText("##ParamName", nameBuffer, sizeof(nameBuffer))) {
+            param.name = nameBuffer;
+        }
+        ImGui::SameLine();
+        const char* typeLabels[] = {"Float", "Bool", "Trigger", "Key Pressed"};
+        int typeIndex = static_cast<int>(param.type);
+        ImGui::SetNextItemWidth(90.0f);
+        if (ImGui::Combo("##ParamType", &typeIndex, typeLabels, 4)) {
+            param.type = static_cast<AnimationParameterType>(typeIndex);
+        }
+        ImGui::SameLine();
+        switch (param.type) {
+        case AnimationParameterType::Float:
+            ImGui::SetNextItemWidth(90.0f);
+            ImGui::DragFloat("##ParamValue", &param.floatValue, 0.01f);
+            break;
+        case AnimationParameterType::Bool:
+            ImGui::Checkbox("##ParamValue", &param.boolValue);
+            break;
+        case AnimationParameterType::Trigger:
+            if (ImGui::SmallButton(param.triggerValue ? "Armed" : "Fire")) {
+                param.triggerValue = true;
+            }
+            break;
+        case AnimationParameterType::KeyPressed: {
+            static const KeyCode kBindableKeys[] = {
+                KeyCode::Space, KeyCode::W, KeyCode::A, KeyCode::S, KeyCode::D,
+                KeyCode::Q, KeyCode::E, KeyCode::R, KeyCode::F, KeyCode::C,
+                KeyCode::LeftShift, KeyCode::LeftControl, KeyCode::LeftAlt,
+                KeyCode::Enter, KeyCode::Escape, KeyCode::Tab,
+                KeyCode::Up, KeyCode::Down, KeyCode::Left, KeyCode::Right};
+            constexpr size_t kBindableKeyCount = sizeof(kBindableKeys) / sizeof(kBindableKeys[0]);
+            int keySelection = 0;
+            for (size_t k = 0; k < kBindableKeyCount; ++k) {
+                if (static_cast<int32_t>(kBindableKeys[k]) == param.keyCode) {
+                    keySelection = static_cast<int>(k);
+                    break;
+                }
+            }
+            ImGui::SetNextItemWidth(90.0f);
+            if (ImGui::BeginCombo("##ParamKey", ToString(kBindableKeys[keySelection]))) {
+                for (size_t k = 0; k < kBindableKeyCount; ++k) {
+                    const bool isSelected = keySelection == static_cast<int>(k);
+                    if (ImGui::Selectable(ToString(kBindableKeys[k]), isSelected)) {
+                        param.keyCode = static_cast<int32_t>(kBindableKeys[k]);
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::SameLine();
+            ImGui::TextColored(param.boolValue ? ImVec4(0.4f, 0.9f, 0.5f, 1.0f) : ImVec4(0.6f, 0.6f, 0.6f, 1.0f),
+                param.boolValue ? "Down" : "Up");
+            break;
+        }
+        }
+        ImGui::SameLine();
+        const bool removeParam = ImGui::SmallButton("X");
+        ImGui::PopID();
+        if (removeParam) {
+            controller.parameters.erase(controller.parameters.begin() + static_cast<std::ptrdiff_t>(i));
+            continue;
+        }
+        ++i;
+    }
+
+    ImGui::SetNextItemWidth(150.0f);
+    ImGui::InputText("##NewParamName", m_AnimatorNewParamName, sizeof(m_AnimatorNewParamName));
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Add Parameter") && m_AnimatorNewParamName[0] != '\0') {
+        AnimationParameter param{};
+        param.name = m_AnimatorNewParamName;
+        controller.parameters.push_back(param);
+    }
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Animation Clips");
+    ImGui::SameLine();
+    if (ImGui::SmallButton("+##AddClipSlot")) {
+        World::AddEntityAnimationClipSlot(static_cast<uint32_t>(entity));
+    }
+    for (size_t i = 0; i < animator.clips.size();) {
+        ImGui::PushID(static_cast<int>(1000 + i));
+        char clipNameBuffer[64];
+        std::snprintf(clipNameBuffer, sizeof(clipNameBuffer), "%s", animator.clips[i].name.c_str());
+        ImGui::SetNextItemWidth(160.0f);
+        if (ImGui::InputText("##ClipName", clipNameBuffer, sizeof(clipNameBuffer))) {
+            const std::string oldName = animator.clips[i].name;
+            World::RenameEntityAnimationClip(static_cast<uint32_t>(entity), oldName, clipNameBuffer);
+        }
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("UPLOADED_OBJ_TEMPLATE")) {
+                const char* pathData = static_cast<const char*>(payload->Data);
+                if (pathData != nullptr && payload->DataSize > 0) {
+                    ImportedModelData imported;
+                    std::string error;
+                    if (AssetImporter::ImportModel(pathData, imported, &error) && !imported.animations.empty()) {
+                        World::SetEntityAnimationClipSlot(
+                            static_cast<uint32_t>(entity), i, imported.animations.front());
+                    }
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Drag", ImVec2(48.0f, 0.0f))) {
+            // no-op target for the drag handle; dragging is initiated below
+        }
+        if (ImGui::BeginDragDropSource()) {
+            uint32_t clipIndex = static_cast<uint32_t>(i);
+            ImGui::SetDragDropPayload("ANIMATOR_CLIP_INDEX", &clipIndex, sizeof(clipIndex));
+            ImGui::TextUnformatted(animator.clips[i].name.c_str());
+            ImGui::EndDragDropSource();
+        }
+        ImGui::SameLine();
+        const bool removeClip = ImGui::SmallButton("X");
+        ImGui::PopID();
+        if (removeClip) {
+            const std::string clipName = animator.clips[i].name;
+            World::RemoveEntityAnimationClip(static_cast<uint32_t>(entity), clipName);
+            continue;
+        }
+        ++i;
+    }
+    if (animator.clips.empty()) {
+        ImGui::TextDisabled("Press + to create a slot, then drag an animation asset onto it.");
+    }
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("State Graph");
+    if (ImGui::Button(m_AnimatorLinkMode ? "Cancel Link" : "Link States")) {
+        m_AnimatorLinkMode = !m_AnimatorLinkMode;
+        m_AnimatorLinkFromState = -1;
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled(m_AnimatorLinkMode ? "Click a source state, then a target state." : "Drag a clip in; click a node to edit it.");
+
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.045f, 0.065f, 0.09f, 1.0f));
+    ImGui::BeginChild("##AnimatorCanvas", ImVec2(0.0f, 260.0f), true, ImGuiWindowFlags_NoScrollWithMouse);
+    ImDrawList* drawList = ImGui::GetWindowDrawList();
+    const ImVec2 canvasOrigin = ImGui::GetCursorScreenPos();
+    ImVec2 canvasSize = ImGui::GetContentRegionAvail();
+    if (canvasSize.x < 1.0f) canvasSize.x = 1.0f;
+    if (canvasSize.y < 1.0f) canvasSize.y = 1.0f;
+
+    ImGui::SetCursorScreenPos(canvasOrigin);
+    ImGui::InvisibleButton("##AnimatorCanvasBg", canvasSize);
+    const bool canvasRightClicked = ImGui::IsItemClicked(ImGuiMouseButton_Right);
+    if (ImGui::BeginDragDropTarget()) {
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ANIMATOR_CLIP_INDEX")) {
+            const uint32_t clipIndex = *static_cast<const uint32_t*>(payload->Data);
+            if (clipIndex < animator.clips.size()) {
+                const ImVec2 dropPos = ImGui::GetMousePos();
+                AnimationState newState{};
+                newState.name = animator.clips[clipIndex].name;
+                newState.clipName = animator.clips[clipIndex].name;
+                newState.canvasX = dropPos.x - canvasOrigin.x;
+                newState.canvasY = dropPos.y - canvasOrigin.y;
+                controller.states.push_back(newState);
+                if (controller.entryState < 0) {
+                    controller.entryState = static_cast<int32_t>(controller.states.size()) - 1;
+                }
+            }
+        }
+        ImGui::EndDragDropTarget();
+    }
+    if (canvasRightClicked) {
+        ImGui::OpenPopup("AnimatorCanvasContext");
+    }
+    if (ImGui::BeginPopup("AnimatorCanvasContext")) {
+        const ImVec2 popupOpenPos = ImGui::GetMousePosOnOpeningCurrentPopup();
+        if (ImGui::MenuItem("Add Empty State")) {
+            AnimationState newState{};
+            newState.canvasX = popupOpenPos.x - canvasOrigin.x;
+            newState.canvasY = popupOpenPos.y - canvasOrigin.y;
+            controller.states.push_back(newState);
+            if (controller.entryState < 0) {
+                controller.entryState = static_cast<int32_t>(controller.states.size()) - 1;
+            }
+        }
+        ImGui::EndPopup();
+    }
+
+    constexpr ImVec2 kNodeSize(120.0f, 38.0f);
+    constexpr float kPortRadius = 5.0f;
+    const ImVec2 mousePos = ImGui::GetMousePos();
+    const bool mouseClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+    const bool mouseReleased = ImGui::IsMouseReleased(ImGuiMouseButton_Left);
+    const bool mouseDown = ImGui::IsMouseDown(ImGuiMouseButton_Left);
+    bool linkCompleted = false;
+    for (size_t ti = 0; ti < controller.transitions.size(); ++ti) {
+        const AnimationTransition& transition = controller.transitions[ti];
+        if (transition.fromState < 0 || transition.fromState >= static_cast<int32_t>(controller.states.size())) continue;
+        if (transition.toState < 0 || transition.toState >= static_cast<int32_t>(controller.states.size())) continue;
+
+        const AnimationState& fromNode = controller.states[static_cast<size_t>(transition.fromState)];
+        const AnimationState& toNode = controller.states[static_cast<size_t>(transition.toState)];
+        const ImVec2 p1(canvasOrigin.x + fromNode.canvasX + kNodeSize.x * 0.5f, canvasOrigin.y + fromNode.canvasY + kNodeSize.y * 0.5f);
+        const ImVec2 p2(canvasOrigin.x + toNode.canvasX + kNodeSize.x * 0.5f, canvasOrigin.y + toNode.canvasY + kNodeSize.y * 0.5f);
+        const bool selected = static_cast<int32_t>(ti) == m_AnimatorSelectedTransition;
+        drawList->AddLine(p1, p2, selected ? IM_COL32(255, 139, 46, 255) : IM_COL32(104, 124, 146, 210), selected ? 3.0f : 2.0f);
+
+        ImVec2 dir(p2.x - p1.x, p2.y - p1.y);
+        const float len = std::sqrt(dir.x * dir.x + dir.y * dir.y);
+        if (len > 1.0f) {
+            dir.x /= len;
+            dir.y /= len;
+            const ImVec2 mid((p1.x + p2.x) * 0.5f, (p1.y + p2.y) * 0.5f);
+            const ImVec2 perp(-dir.y, dir.x);
+            const ImVec2 tip(mid.x + dir.x * 7.0f, mid.y + dir.y * 7.0f);
+            const ImVec2 a(mid.x - dir.x * 7.0f + perp.x * 5.0f, mid.y - dir.y * 7.0f + perp.y * 5.0f);
+            const ImVec2 b(mid.x - dir.x * 7.0f - perp.x * 5.0f, mid.y - dir.y * 7.0f - perp.y * 5.0f);
+            const ImU32 arrowColor = selected ? IM_COL32(255, 139, 46, 255) : IM_COL32(104, 124, 146, 230);
+            drawList->AddTriangleFilled(tip, a, b, arrowColor);
+
+            ImGui::PushID(static_cast<int>(2000 + ti));
+            ImGui::SetCursorScreenPos(ImVec2(mid.x - 8.0f, mid.y - 8.0f));
+            if (ImGui::InvisibleButton("##TransitionHit", ImVec2(16.0f, 16.0f))) {
+                m_AnimatorSelectedTransition = static_cast<int32_t>(ti);
+                m_AnimatorSelectedState = -1;
+            }
+            ImGui::PopID();
+        }
+    }
+
+    for (size_t si = 0; si < controller.states.size(); ++si) {
+        AnimationState& state = controller.states[si];
+        ImGui::PushID(static_cast<int>(3000 + si));
+        const ImVec2 nodePos(canvasOrigin.x + state.canvasX, canvasOrigin.y + state.canvasY);
+        const ImVec2 nodeMax(nodePos.x + kNodeSize.x, nodePos.y + kNodeSize.y);
+        const ImVec2 inputPort(nodePos.x, nodePos.y + kNodeSize.y * 0.5f);
+        const ImVec2 outputPort(nodeMax.x, nodePos.y + kNodeSize.y * 0.5f);
+        const auto isNear = [&](const ImVec2& point) {
+            const float dx = mousePos.x - point.x;
+            const float dy = mousePos.y - point.y;
+            return dx * dx + dy * dy <= 100.0f;
+        };
+        const bool inputHovered = isNear(inputPort);
+        const bool outputHovered = isNear(outputPort);
+        const bool nodeHovered = mousePos.x >= nodePos.x && mousePos.x <= nodeMax.x
+            && mousePos.y >= nodePos.y && mousePos.y <= nodeMax.y
+            && !inputHovered && !outputHovered;
+
+        if (outputHovered && mouseClicked) {
+            m_AnimatorLinkMode = true;
+            m_AnimatorLinkFromState = static_cast<int32_t>(si);
+        } else if (nodeHovered && mouseClicked) {
+            if (m_AnimatorLinkMode) {
+                if (m_AnimatorLinkFromState < 0) {
+                    m_AnimatorLinkFromState = static_cast<int32_t>(si);
+                } else if (m_AnimatorLinkFromState != static_cast<int32_t>(si)) {
+                    AnimationTransition newTransition{};
+                    newTransition.fromState = m_AnimatorLinkFromState;
+                    newTransition.toState = static_cast<int32_t>(si);
+                    controller.transitions.push_back(newTransition);
+                    m_AnimatorLinkFromState = -1;
+                    m_AnimatorLinkMode = false;
+                }
+            } else {
+                m_AnimatorSelectedState = static_cast<int32_t>(si);
+                m_AnimatorSelectedTransition = -1;
+                m_AnimatorDraggingState = static_cast<int32_t>(si);
+                m_AnimatorDragOffsetX = mousePos.x - nodePos.x;
+                m_AnimatorDragOffsetY = mousePos.y - nodePos.y;
+            }
+        }
+
+        if (m_AnimatorDraggingState == static_cast<int32_t>(si) && mouseDown) {
+            state.canvasX = mousePos.x - canvasOrigin.x - m_AnimatorDragOffsetX;
+            state.canvasY = mousePos.y - canvasOrigin.y - m_AnimatorDragOffsetY;
+        }
+        if (m_AnimatorLinkMode && m_AnimatorLinkFromState >= 0 && inputHovered
+            && mouseReleased
+            && m_AnimatorLinkFromState != static_cast<int32_t>(si)) {
+            const bool duplicate = std::any_of(controller.transitions.begin(), controller.transitions.end(), [&](const AnimationTransition& transition) {
+                return transition.fromState == m_AnimatorLinkFromState && transition.toState == static_cast<int32_t>(si);
+            });
+            if (!duplicate) {
+                AnimationTransition newTransition{};
+                newTransition.fromState = m_AnimatorLinkFromState;
+                newTransition.toState = static_cast<int32_t>(si);
+                controller.transitions.push_back(newTransition);
+                m_AnimatorSelectedTransition = static_cast<int32_t>(controller.transitions.size()) - 1;
+                m_AnimatorSelectedState = -1;
+            }
+            linkCompleted = true;
+            m_AnimatorLinkFromState = -1;
+            m_AnimatorLinkMode = false;
+        }
+
+        const bool isEntry = static_cast<int32_t>(si) == controller.entryState;
+        const bool isCurrent = static_cast<int32_t>(si) == animator.currentState;
+        const bool isSelected = static_cast<int32_t>(si) == m_AnimatorSelectedState;
+        const bool isLinkSource = m_AnimatorLinkMode && m_AnimatorLinkFromState == static_cast<int32_t>(si);
+
+        const ImU32 fill = isCurrent ? IM_COL32(151, 67, 22, 255) : (isSelected ? IM_COL32(39, 57, 78, 255) : IM_COL32(22, 33, 47, 255));
+        const ImU32 outline = isLinkSource ? IM_COL32(255, 139, 46, 255) : (isSelected ? IM_COL32(244, 118, 34, 255) : IM_COL32(66, 84, 104, 220));
+        drawList->AddRectFilled(nodePos, nodeMax, fill, 5.0f);
+        drawList->AddRect(nodePos, nodeMax, outline, 5.0f, 0, isSelected ? 2.5f : 1.2f);
+        drawList->AddCircleFilled(inputPort, kPortRadius, inputHovered ? IM_COL32(255, 155, 65, 255) : IM_COL32(214, 92, 29, 255));
+        drawList->AddCircleFilled(outputPort, kPortRadius, isLinkSource ? IM_COL32(255, 155, 65, 255) : IM_COL32(214, 92, 29, 255));
+        drawList->AddText(ImVec2(nodePos.x + 6.0f, nodePos.y + 4.0f), IM_COL32(235, 240, 245, 255), state.name.c_str());
+        drawList->AddText(ImVec2(nodePos.x + 6.0f, nodePos.y + 20.0f), IM_COL32(180, 195, 205, 255),
+            state.clipName.empty() ? "(no clip)" : state.clipName.c_str());
+        if (isEntry) {
+            drawList->AddText(ImVec2(nodeMax.x - 14.0f, nodePos.y + 4.0f), IM_COL32(255, 155, 65, 255), "E");
+        }
+        ImGui::PopID();
+    }
+    if (m_AnimatorLinkMode && m_AnimatorLinkFromState >= 0
+        && m_AnimatorLinkFromState < static_cast<int32_t>(controller.states.size())) {
+        const AnimationState& source = controller.states[static_cast<size_t>(m_AnimatorLinkFromState)];
+        const ImVec2 sourcePort(
+            canvasOrigin.x + source.canvasX + kNodeSize.x,
+            canvasOrigin.y + source.canvasY + kNodeSize.y * 0.5f);
+        drawList->AddLine(sourcePort, ImGui::GetMousePos(), IM_COL32(255, 139, 46, 240), 2.0f);
+        if (mouseReleased && !linkCompleted) {
+            m_AnimatorLinkFromState = -1;
+            m_AnimatorLinkMode = false;
+        }
+    }
+    if (mouseReleased) {
+        m_AnimatorDraggingState = -1;
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Transitions");
+    if (ImGui::SmallButton("Add Transition")) {
+        AnimationTransition newTransition{};
+        newTransition.fromState = -1;
+        newTransition.toState = controller.states.empty() ? -1 : 0;
+        controller.transitions.push_back(newTransition);
+        m_AnimatorSelectedTransition = static_cast<int32_t>(controller.transitions.size()) - 1;
+        m_AnimatorSelectedState = -1;
+    }
+    for (size_t ti = 0; ti < controller.transitions.size();) {
+        ImGui::PushID(static_cast<int>(5000 + ti));
+        AnimationTransition& transition = controller.transitions[ti];
+
+        std::vector<std::string> fromLabelStorage;
+        fromLabelStorage.emplace_back("Any State");
+        for (const auto& state : controller.states) {
+            fromLabelStorage.push_back(state.name);
+        }
+        std::vector<const char*> fromLabels;
+        for (const auto& label : fromLabelStorage) {
+            fromLabels.push_back(label.c_str());
+        }
+        int fromSelection = transition.fromState + 1;
+        ImGui::SetNextItemWidth(110.0f);
+        if (ImGui::Combo("##FromState", &fromSelection, fromLabels.data(), static_cast<int>(fromLabels.size()))) {
+            transition.fromState = fromSelection - 1;
+        }
+
+        ImGui::SameLine();
+        ImGui::TextUnformatted("->");
+        ImGui::SameLine();
+
+        std::vector<const char*> toLabels;
+        for (const auto& state : controller.states) {
+            toLabels.push_back(state.name.c_str());
+        }
+        int toSelection = toLabels.empty()
+            ? -1
+            : std::clamp(transition.toState, 0, static_cast<int32_t>(toLabels.size()) - 1);
+        ImGui::SetNextItemWidth(110.0f);
+        if (!toLabels.empty() && ImGui::Combo("##ToState", &toSelection, toLabels.data(), static_cast<int>(toLabels.size()))) {
+            transition.toState = toSelection;
+        }
+
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Edit")) {
+            m_AnimatorSelectedTransition = static_cast<int32_t>(ti);
+            m_AnimatorSelectedState = -1;
+        }
+        ImGui::SameLine();
+        const bool removeTransition = ImGui::SmallButton("X");
+        ImGui::PopID();
+        if (removeTransition) {
+            controller.transitions.erase(controller.transitions.begin() + static_cast<std::ptrdiff_t>(ti));
+            if (m_AnimatorSelectedTransition == static_cast<int32_t>(ti)) {
+                m_AnimatorSelectedTransition = -1;
+            }
+            continue;
+        }
+        ++ti;
+    }
+    if (controller.transitions.empty()) {
+        ImGui::TextDisabled("No transitions yet. Add one, or link two nodes above.");
+    }
+
+    if (m_AnimatorSelectedState >= 0 && m_AnimatorSelectedState < static_cast<int32_t>(controller.states.size())) {
+        AnimationState& state = controller.states[static_cast<size_t>(m_AnimatorSelectedState)];
+        ImGui::Separator();
+        ImGui::Text("State: %s", state.name.c_str());
+        char nameBuffer[64];
+        std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", state.name.c_str());
+        if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer))) {
+            state.name = nameBuffer;
+        }
+
+        std::vector<std::string> clipLabelStorage;
+        clipLabelStorage.reserve(animator.clips.size() + 1);
+        clipLabelStorage.emplace_back("(none)");
+        for (const auto& clip : animator.clips) {
+            clipLabelStorage.push_back(clip.name);
+        }
+        std::vector<const char*> clipLabels;
+        clipLabels.reserve(clipLabelStorage.size());
+        for (const auto& label : clipLabelStorage) {
+            clipLabels.push_back(label.c_str());
+        }
+        int selectedClip = 0;
+        for (size_t ci = 0; ci < animator.clips.size(); ++ci) {
+            if (animator.clips[ci].name == state.clipName) {
+                selectedClip = static_cast<int>(ci) + 1;
+                break;
+            }
+        }
+        if (ImGui::Combo("Clip", &selectedClip, clipLabels.data(), static_cast<int>(clipLabels.size()))) {
+            state.clipName = selectedClip == 0 ? std::string() : animator.clips[static_cast<size_t>(selectedClip - 1)].name;
+        }
+        ImGui::DragFloat("State Speed", &state.speed, 0.01f, -4.0f, 4.0f);
+        ImGui::Checkbox("Loop", &state.loop);
+        if (ImGui::Button("Set As Entry")) {
+            controller.entryState = m_AnimatorSelectedState;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Delete State")) {
+            const int32_t deleted = m_AnimatorSelectedState;
+            controller.states.erase(controller.states.begin() + deleted);
+            for (auto it = controller.transitions.begin(); it != controller.transitions.end();) {
+                if (it->fromState == deleted || it->toState == deleted) {
+                    it = controller.transitions.erase(it);
+                    continue;
+                }
+                if (it->fromState > deleted) --it->fromState;
+                if (it->toState > deleted) --it->toState;
+                ++it;
+            }
+            if (controller.entryState == deleted) {
+                controller.entryState = controller.states.empty() ? -1 : 0;
+            } else if (controller.entryState > deleted) {
+                --controller.entryState;
+            }
+            if (animator.currentState == deleted) {
+                animator.currentState = -1;
+            } else if (animator.currentState > deleted) {
+                --animator.currentState;
+            }
+            m_AnimatorSelectedState = -1;
+        }
+    }
+
+    if (m_AnimatorSelectedTransition >= 0 && m_AnimatorSelectedTransition < static_cast<int32_t>(controller.transitions.size())) {
+        AnimationTransition& transition = controller.transitions[static_cast<size_t>(m_AnimatorSelectedTransition)];
+        ImGui::Separator();
+        const char* fromName = (transition.fromState >= 0 && transition.fromState < static_cast<int32_t>(controller.states.size()))
+            ? controller.states[static_cast<size_t>(transition.fromState)].name.c_str() : "?";
+        const char* toName = (transition.toState >= 0 && transition.toState < static_cast<int32_t>(controller.states.size()))
+            ? controller.states[static_cast<size_t>(transition.toState)].name.c_str() : "?";
+        ImGui::Text("Transition: %s -> %s", fromName, toName);
+        ImGui::Checkbox("Has Exit Time", &transition.hasExitTime);
+        if (transition.hasExitTime) {
+            ImGui::SliderFloat("Exit Time", &transition.exitTime, 0.0f, 1.0f);
+        }
+        ImGui::DragFloat("Blend Duration", &transition.blendDuration, 0.01f, 0.0f, 2.0f);
+
+        ImGui::TextUnformatted("Conditions");
+        for (size_t ci = 0; ci < transition.conditions.size();) {
+            ImGui::PushID(static_cast<int>(4000 + ci));
+            AnimationCondition& condition = transition.conditions[ci];
+
+            std::vector<const char*> paramNames;
+            paramNames.reserve(controller.parameters.size());
+            for (const auto& param : controller.parameters) {
+                paramNames.push_back(param.name.c_str());
+            }
+            int paramIndex = 0;
+            for (size_t pi = 0; pi < controller.parameters.size(); ++pi) {
+                if (controller.parameters[pi].name == condition.parameterName) {
+                    paramIndex = static_cast<int>(pi);
+                    break;
+                }
+            }
+            if (!paramNames.empty()) {
+                ImGui::SetNextItemWidth(110.0f);
+                if (ImGui::Combo("##ConditionParam", &paramIndex, paramNames.data(), static_cast<int>(paramNames.size()))) {
+                    condition.parameterName = controller.parameters[static_cast<size_t>(paramIndex)].name;
+                }
+            } else {
+                ImGui::TextDisabled("No parameters yet");
+            }
+            ImGui::SameLine();
+            const char* comparisonLabels[] = {"==", "!=", ">", "<", ">=", "<="};
+            int comparisonIndex = static_cast<int>(condition.comparison);
+            ImGui::SetNextItemWidth(55.0f);
+            if (ImGui::Combo("##ConditionComparison", &comparisonIndex, comparisonLabels, 6)) {
+                condition.comparison = static_cast<AnimationComparison>(comparisonIndex);
+            }
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(70.0f);
+            ImGui::DragFloat("##ConditionThreshold", &condition.threshold, 0.01f);
+            ImGui::SameLine();
+            const bool removeCondition = ImGui::SmallButton("X");
+            ImGui::PopID();
+            if (removeCondition) {
+                transition.conditions.erase(transition.conditions.begin() + static_cast<std::ptrdiff_t>(ci));
+                continue;
+            }
+            ++ci;
+        }
+        if (ImGui::SmallButton("Add Condition") && !controller.parameters.empty()) {
+            AnimationCondition condition{};
+            condition.parameterName = controller.parameters.front().name;
+            transition.conditions.push_back(condition);
+        }
+        if (ImGui::Button("Delete Transition")) {
+            controller.transitions.erase(controller.transitions.begin() + m_AnimatorSelectedTransition);
+            m_AnimatorSelectedTransition = -1;
+        }
+    }
+
+    World::SetEntityAnimatorController(static_cast<uint32_t>(entity), controller);
 }
 
 } // namespace Piece

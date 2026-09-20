@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -15,6 +16,9 @@ public:
     ContentBrowserPanel();
     void OnImGuiRender();
     void SetAnimationTarget(uint32_t entityId) { m_AnimationTargetId = entityId; }
+    void SetModelSpawnCallback(std::function<void(const std::filesystem::path&)> callback) {
+        m_ModelSpawnCallback = std::move(callback);
+    }
 
     const std::filesystem::path& GetAssetsDirectory() const { return m_AssetsDirectory; }
 
@@ -27,13 +31,14 @@ public:
 
 private:
     void DrawAssetToolbar();
+    void DrawDirectoryTree(const std::filesystem::path& directory);
     void DrawFilesystemAssets();
     void DrawUploadedTemplates();
     void DrawMaterials();
     void DrawMaterialCard(const MaterialView& material, bool isDefault);
     void LoadMaterialAssets();
     void SaveMaterialAsset(uint32_t materialId);
-    void UploadModelTemplate();
+    void ImportModelAsset();
     void SpawnUploadedTemplate(size_t index);
     void RemoveUploadedTemplate(size_t index);
     void BeginRenameUploadedTemplate(size_t index);
@@ -58,6 +63,7 @@ private:
     std::filesystem::path m_SelectedAssetPath;
     bool m_MaterialAssetsLoaded = false;
     uint32_t m_AnimationTargetId = 0;
+    std::function<void(const std::filesystem::path&)> m_ModelSpawnCallback;
 };
 
 } // namespace Piece
