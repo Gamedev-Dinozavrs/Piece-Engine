@@ -19,3 +19,6 @@
 [submodule "Dependencies/yaml-cpp"]
 	path = Dependencies/yaml-cpp
 	url = https://github.com/Gamedev-Dinozavrs/yaml-cpp
+[submodule "Dependencies/ufbx"]
+	path = Dependencies/ufbx
+	url = https://github.com/Gamedev-Dinozavrs/ufbx

@@ -13,6 +13,8 @@ struct Vertex {
     glm::vec3 color;
     glm::vec2 uv;
     glm::vec3 normal;
+    glm::uvec4 jointIds{0};
+    glm::vec4 jointWeights{0.0f};
 };
 
 class Mesh {

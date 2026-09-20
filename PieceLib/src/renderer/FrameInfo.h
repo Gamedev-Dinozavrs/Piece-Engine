@@ -20,6 +20,7 @@ struct FrameInfo {
     VkPipelineLayout pipelineLayout = VK_NULL_HANDLE;
     VkDescriptorSet globalDescriptorSet = VK_NULL_HANDLE;
     const std::unordered_map<uint32_t, VkDescriptorSet>* materialDescriptorSets = nullptr;
+    const std::unordered_map<uint32_t, VkDescriptorSet>* animationDescriptorSets = nullptr;
 
     Pipeline* pipeline = nullptr;
     EditorCamera* camera = nullptr;

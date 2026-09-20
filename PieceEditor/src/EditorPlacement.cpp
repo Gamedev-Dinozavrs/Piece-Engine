@@ -36,6 +36,10 @@ bool DrawCreateMenu() {
             World::SetLightingSettings(lighting);
             created = true;
         }
+        if (ImGui::MenuItem("Environment")) {
+            World::CreateEnvironmentObject();
+            created = true;
+        }
         ImGui::EndMenu();
     }
     return created;

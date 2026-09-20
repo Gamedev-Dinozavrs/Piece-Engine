@@ -82,6 +82,7 @@ void SerializeMaterials(YAML::Emitter& out) {
         out << YAML::BeginMap;
         out << YAML::Key << "Id" << YAML::Value << material.id;
         out << YAML::Key << "Name" << YAML::Value << material.name;
+        out << YAML::Key << "AssetPath" << YAML::Value << material.assetPath;
         out << YAML::Key << "AlbedoPath" << YAML::Value << material.textures.albedoPath;
         out << YAML::Key << "NormalPath" << YAML::Value << material.textures.normalPath;
         out << YAML::Key << "HeightPath" << YAML::Value << material.textures.heightPath;
@@ -91,6 +92,12 @@ void SerializeMaterials(YAML::Emitter& out) {
         out << YAML::Key << "EmissivePath" << YAML::Value << material.textures.emissivePath;
         out << YAML::Key << "RoughnessFactor" << YAML::Value << material.surfaceFactors.roughnessFactor;
         out << YAML::Key << "MetallicFactor" << YAML::Value << material.surfaceFactors.metallicFactor;
+        out << YAML::Key << "NormalScale" << YAML::Value << material.surfaceFactors.normalScale;
+        out << YAML::Key << "OcclusionStrength" << YAML::Value << material.surfaceFactors.occlusionStrength;
+        out << YAML::Key << "AlphaMode" << YAML::Value << static_cast<int>(material.renderSettings.alphaMode);
+        out << YAML::Key << "AlphaCutoff" << YAML::Value << material.renderSettings.alphaCutoff;
+        out << YAML::Key << "DoubleSided" << YAML::Value << material.renderSettings.doubleSided;
+        out << YAML::Key << "Unlit" << YAML::Value << material.renderSettings.unlit;
         out << YAML::Key << "BaseColor" << YAML::Value << material.colors.baseColor;
         out << YAML::Key << "EmissiveColor" << YAML::Value << material.colors.emissiveColor;
         out << YAML::Key << "EmissiveEnabled" << YAML::Value << material.colors.emissiveEnabled;
@@ -122,6 +129,8 @@ void DeserializeMaterials(const YAML::Node& root) {
             MaterialSurfaceFactors surfaceFactors{};
             surfaceFactors.roughnessFactor = materialNode["RoughnessFactor"].as<float>(0.75f);
             surfaceFactors.metallicFactor = materialNode["MetallicFactor"].as<float>(0.0f);
+            surfaceFactors.normalScale = materialNode["NormalScale"].as<float>(1.0f);
+            surfaceFactors.occlusionStrength = materialNode["OcclusionStrength"].as<float>(1.0f);
 
             MaterialColors colors{};
             colors.baseColor = materialNode["BaseColor"].as<glm::vec3>(glm::vec3(1.0f));
@@ -133,9 +142,17 @@ void DeserializeMaterials(const YAML::Node& root) {
             colors.bloomIntensity = materialNode["BloomIntensity"].as<float>(0.35f);
             colors.bloomRadius = materialNode["BloomRadius"].as<float>(2.0f);
 
+            MaterialRenderSettings renderSettings{};
+            renderSettings.alphaMode = static_cast<MaterialAlphaMode>(materialNode["AlphaMode"].as<int>(0));
+            renderSettings.alphaCutoff = materialNode["AlphaCutoff"].as<float>(0.5f);
+            renderSettings.doubleSided = materialNode["DoubleSided"].as<bool>(false);
+            renderSettings.unlit = materialNode["Unlit"].as<bool>(false);
+
             const uint32_t id = materialNode["Id"].as<uint32_t>();
             const std::string name = materialNode["Name"].as<std::string>("Material");
             World::RestoreMaterial(id, name, textures, surfaceFactors, colors);
+            World::SetMaterialAssetPath(id, materialNode["AssetPath"].as<std::string>(""));
+            World::SetMaterialRenderSettings(id, renderSettings);
         }
     }
 
@@ -151,19 +168,6 @@ void SerializeWorldSettings(YAML::Emitter& out) {
     out << YAML::Key << "ShininessMax" << YAML::Value << specular.shininessMax;
     out << YAML::EndMap;
 
-    const EnvironmentSettings environment = World::GetEnvironmentSettings();
-    out << YAML::Key << "Environment" << YAML::Value;
-    out << YAML::BeginMap;
-    out << YAML::Key << "Enabled" << YAML::Value << environment.enabled;
-    out << YAML::Key << "DiffuseMapPath" << YAML::Value << environment.diffuseMapPath;
-    out << YAML::Key << "SpecularMapPath" << YAML::Value << environment.specularMapPath;
-    out << YAML::Key << "Intensity" << YAML::Value << environment.intensity;
-    out << YAML::Key << "DiffuseStrength" << YAML::Value << environment.diffuseStrength;
-    out << YAML::Key << "SpecularStrength" << YAML::Value << environment.specularStrength;
-    out << YAML::Key << "AmbientStrength" << YAML::Value << environment.ambientStrength;
-    out << YAML::Key << "AATechnique" << YAML::Value << static_cast<int>(environment.aaTechnique);
-    out << YAML::Key << "MsaaSampleCount" << YAML::Value << environment.msaaSampleCount;
-    out << YAML::EndMap;
 }
 
 void DeserializeWorldSettings(const YAML::Node& root) {
@@ -180,8 +184,8 @@ void DeserializeWorldSettings(const YAML::Node& root) {
     if (environmentNode) {
         EnvironmentSettings environment{};
         environment.enabled = environmentNode["Enabled"].as<bool>(false);
-        environment.diffuseMapPath = environmentNode["DiffuseMapPath"].as<std::string>("");
-        environment.specularMapPath = environmentNode["SpecularMapPath"].as<std::string>("");
+            environment.hdrPath = environmentNode["HDRPath"].as<std::string>(
+                environmentNode["DiffuseMapPath"].as<std::string>(""));
         environment.intensity = environmentNode["Intensity"].as<float>(1.0f);
         environment.diffuseStrength = environmentNode["DiffuseStrength"].as<float>(1.0f);
         environment.specularStrength = environmentNode["SpecularStrength"].as<float>(1.0f);
@@ -301,6 +305,21 @@ void SerializeEntity(YAML::Emitter& out, Entity entity) {
         out << YAML::EndMap;
     }
 
+    if (entity.HasComponent<EnvironmentComponent>()) {
+        const auto& environment = entity.GetComponent<EnvironmentComponent>();
+        out << YAML::Key << "EnvironmentComponent";
+        out << YAML::BeginMap;
+        out << YAML::Key << "Enabled" << YAML::Value << environment.enabled;
+        out << YAML::Key << "HDRPath" << YAML::Value << environment.hdrPath;
+        out << YAML::Key << "Intensity" << YAML::Value << environment.intensity;
+        out << YAML::Key << "DiffuseStrength" << YAML::Value << environment.diffuseStrength;
+        out << YAML::Key << "SpecularStrength" << YAML::Value << environment.specularStrength;
+        out << YAML::Key << "AmbientStrength" << YAML::Value << environment.ambientStrength;
+        out << YAML::Key << "AATechnique" << YAML::Value << environment.aaTechnique;
+        out << YAML::Key << "MsaaSampleCount" << YAML::Value << environment.msaaSampleCount;
+        out << YAML::EndMap;
+    }
+
     out << YAML::EndMap;
 }
 
@@ -368,6 +387,7 @@ bool SceneSerializer::Deserialize(const std::string& filepath) {
     }
 
     m_Scene->Clear();
+    World::SetActiveScene(m_Scene);
     DeserializeMaterials(root);
     DeserializeWorldSettings(root);
 
@@ -408,12 +428,26 @@ bool SceneSerializer::Deserialize(const std::string& filepath) {
 
             std::string importedSourcePath;
             std::string importedMeshName;
+            ImportedModelData importedModel{};
+            bool importedModelLoaded = false;
             if (auto importedNode = entityNode["ImportedModelComponent"]) {
                 auto& imported = deserializedEntity.AddComponent<ImportedModelComponent>();
                 imported.sourcePath = importedNode["SourcePath"].as<std::string>("");
                 imported.meshName = importedNode["MeshName"].as<std::string>("");
                 importedSourcePath = imported.sourcePath;
                 importedMeshName = imported.meshName;
+                std::string importError;
+                importedModelLoaded = !importedSourcePath.empty()
+                    && AssetImporter::ImportModel(importedSourcePath, importedModel, &importError);
+                if (!importedModelLoaded && !importedSourcePath.empty()) {
+                    PIECE_CORE_WARN("SceneSerializer: failed to restore imported model '{0}': {1}", importedSourcePath, importError);
+                }
+                if (importedModelLoaded && !importedModel.joints.empty()) {
+                    auto& animator = deserializedEntity.AddComponent<AnimatorComponent>();
+                    animator.joints = importedModel.joints;
+                    animator.clips = importedModel.animations;
+                    animator.boneMatrices.assign(animator.joints.size(), glm::mat4(1.0f));
+                }
             }
 
             if (auto meshRendererNode = entityNode["MeshRendererComponent"]) {
@@ -422,8 +456,13 @@ bool SceneSerializer::Deserialize(const std::string& filepath) {
                 auto& meshRenderer = deserializedEntity.AddComponent<MeshRendererComponent>(primitiveType, normalSource);
                 meshRenderer.materialId = meshRendererNode["MaterialId"].as<uint32_t>(0);
 
-                if (primitiveType == PrimitiveType::Unknown && !importedSourcePath.empty()) {
-                    meshRenderer.mesh = ReimportMesh(importedSourcePath, importedMeshName);
+                if (primitiveType == PrimitiveType::Unknown && importedModelLoaded) {
+                    for (const auto& meshData : importedModel.meshes) {
+                        if (meshData.name == importedMeshName) {
+                            meshRenderer.mesh = CreateRef<Mesh>(Renderer::GetDevice(), meshData.vertices, meshData.indices);
+                            break;
+                        }
+                    }
                 }
             }
 
@@ -460,6 +499,19 @@ bool SceneSerializer::Deserialize(const std::string& filepath) {
                 light.intensity = spotLightNode["Intensity"].as<float>(1.0f);
                 light.innerCutoffDegrees = spotLightNode["InnerCutoffDegrees"].as<float>(15.0f);
                 light.outerCutoffDegrees = spotLightNode["OuterCutoffDegrees"].as<float>(20.0f);
+            }
+
+            if (auto environmentNode = entityNode["EnvironmentComponent"]) {
+                auto& environment = deserializedEntity.AddComponent<EnvironmentComponent>();
+                environment.enabled = environmentNode["Enabled"].as<bool>(false);
+                environment.hdrPath = environmentNode["HDRPath"].as<std::string>(
+                    environmentNode["DiffuseMapPath"].as<std::string>(""));
+                environment.intensity = environmentNode["Intensity"].as<float>(1.0f);
+                environment.diffuseStrength = environmentNode["DiffuseStrength"].as<float>(1.0f);
+                environment.specularStrength = environmentNode["SpecularStrength"].as<float>(1.0f);
+                environment.ambientStrength = environmentNode["AmbientStrength"].as<float>(0.08f);
+                environment.aaTechnique = environmentNode["AATechnique"].as<uint32_t>(1);
+                environment.msaaSampleCount = environmentNode["MsaaSampleCount"].as<uint32_t>(4);
             }
         }
     }

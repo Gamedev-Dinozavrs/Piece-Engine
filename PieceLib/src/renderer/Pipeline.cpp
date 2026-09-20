@@ -165,7 +165,9 @@ namespace Piece {
             {0, 0, VK_FORMAT_R32G32B32_SFLOAT,  offsetof(Vertex, position)},
             {1, 0, VK_FORMAT_R32G32B32_SFLOAT,  offsetof(Vertex, color)},
             {2, 0, VK_FORMAT_R32G32_SFLOAT,     offsetof(Vertex, uv)},
-            {3, 0, VK_FORMAT_R32G32B32_SFLOAT,  offsetof(Vertex, normal)}
+            {3, 0, VK_FORMAT_R32G32B32_SFLOAT,  offsetof(Vertex, normal)},
+            {4, 0, VK_FORMAT_R32G32B32A32_UINT, offsetof(Vertex, jointIds)},
+            {5, 0, VK_FORMAT_R32G32B32A32_SFLOAT, offsetof(Vertex, jointWeights)}
         };
         configInfo.pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
         configInfo.pushConstantRange.offset = 0;

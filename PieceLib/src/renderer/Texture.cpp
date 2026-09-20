@@ -8,32 +8,44 @@
 #include <stdexcept>
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 
 namespace Piece {
 
 Texture::Texture(Device& device, const std::string& filepath, bool isColorData)
     : m_Device(device) {
-    int channels;
-    stbi_uc* pixels = stbi_load(filepath.c_str(), &m_Width, &m_Height, &channels, STBI_rgb_alpha);
+    int channels = 0;
+    const bool isHdr = !filepath.empty() && std::filesystem::path(filepath).extension() == ".hdr";
+    float* hdrPixels = isHdr ? stbi_loadf(filepath.c_str(), &m_Width, &m_Height, &channels, STBI_rgb_alpha) : nullptr;
     stbi_uc fallbackPixel[4] = { 255, 255, 255, 255 };
-    if (!pixels) {
+    stbi_uc* pixels = nullptr;
+    if (!hdrPixels) {
+        pixels = stbi_load(filepath.c_str(), &m_Width, &m_Height, &channels, STBI_rgb_alpha);
+    }
+    if (!pixels && !hdrPixels) {
         m_Width = 1;
         m_Height = 1;
         channels = 4;
         pixels = fallbackPixel;
     }
 
-    VkDeviceSize imageSize = static_cast<VkDeviceSize>(m_Width) * static_cast<VkDeviceSize>(m_Height) * 4;
-    m_MipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(m_Width, m_Height)))) + 1;
+    const bool useHdrPixels = hdrPixels != nullptr;
+    VkDeviceSize imageSize = static_cast<VkDeviceSize>(m_Width) * static_cast<VkDeviceSize>(m_Height)
+        * (useHdrPixels ? sizeof(float) : sizeof(stbi_uc)) * 4;
+    m_MipLevels = useHdrPixels
+        ? 1
+        : static_cast<uint32_t>(std::floor(std::log2(std::max(m_Width, m_Height)))) + 1;
 
     // staging buffer
     auto staging = CreateScope<Buffer>(m_Device, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     staging->map();
-    staging->write(pixels, imageSize, 0);
+    staging->write(useHdrPixels ? static_cast<const void*>(hdrPixels) : static_cast<const void*>(pixels), imageSize, 0);
     staging->flush(imageSize, 0);
     staging->unmap();
 
-    m_ImageFormat = isColorData ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM;
+    m_ImageFormat = useHdrPixels
+        ? VK_FORMAT_R32G32B32A32_SFLOAT
+        : (isColorData ? VK_FORMAT_R8G8B8A8_SRGB : VK_FORMAT_R8G8B8A8_UNORM);
 
     VkImageCreateInfo imageInfo{};
     imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
@@ -54,7 +66,11 @@ Texture::Texture(Device& device, const std::string& filepath, bool isColorData)
 
     m_Device.copyBufferToImage(staging->getBuffer(), m_Image, static_cast<uint32_t>(m_Width), static_cast<uint32_t>(m_Height), 1);
 
-    generateMipmaps();
+    if (m_MipLevels > 1) {
+        generateMipmaps();
+    } else {
+        transitionImageLayout(VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    }
 
     m_ImageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
@@ -69,7 +85,7 @@ Texture::Texture(Device& device, const std::string& filepath, bool isColorData)
     samplerInfo.mipLodBias = 0.0f;
     samplerInfo.compareOp = VK_COMPARE_OP_NEVER;
     samplerInfo.minLod = 0.0f;
-    samplerInfo.maxLod = static_cast<float>(m_MipLevels);
+    samplerInfo.maxLod = static_cast<float>(m_MipLevels - 1);
     samplerInfo.maxAnisotropy = 16.0f;
     samplerInfo.anisotropyEnable = VK_TRUE;
     samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
@@ -93,7 +109,9 @@ Texture::Texture(Device& device, const std::string& filepath, bool isColorData)
         throw std::runtime_error("failed to create texture image view!");
     }
 
-    if (pixels != fallbackPixel) {
+    if (useHdrPixels) {
+        stbi_image_free(hdrPixels);
+    } else if (pixels != fallbackPixel) {
         stbi_image_free(pixels);
     }
 }

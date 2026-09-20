@@ -1,6 +1,8 @@
 #include <PiecePCH.h>
 #include <Piece.h>
 #include <renderer/Buffer.h>
+#include <scene/AnimationSystem.h>
+#include <scene/Components.h>
 
 #include "imgui.h"
 #include <GLFW/glfw3.h>
@@ -69,8 +71,7 @@ namespace Piece
         std::string MakeEnvironmentSignature(const EnvironmentSettings& environment)
         {
             return (environment.enabled ? "1|" : "0|")
-                + environment.diffuseMapPath + "|"
-                + environment.specularMapPath + "|"
+                + environment.hdrPath + "|"
                 + std::to_string(environment.intensity) + "|"
                 + std::to_string(environment.diffuseStrength) + "|"
                 + std::to_string(environment.specularStrength) + "|"
@@ -109,8 +110,8 @@ namespace Piece
                 environment.aaTechnique == AATechnique::MSAA &&
                 ctx.msaaSamples != VK_SAMPLE_COUNT_1_BIT;
 
-            auto envDiffuseTexture = GetOrCreateTexture(ctx, environment.diffuseMapPath);
-            auto envSpecularTexture = GetOrCreateTexture(ctx, environment.specularMapPath);
+            auto envDiffuseTexture = GetOrCreateTexture(ctx, environment.hdrPath);
+            auto envSpecularTexture = envDiffuseTexture;
 
             for (size_t i = 0; i < ctx.compositeDescriptorSets.size(); ++i) {
                 VkDescriptorImageInfo worldPosRoughnessInfo{};
@@ -237,11 +238,85 @@ namespace Piece
             if (!resolvedMaterial.metallicPath.empty()) {
                 materialFlags |= 1u << 2;
             }
+            if (!resolvedMaterial.roughnessPath.empty()) {
+                materialFlags |= 1u << 3;
+            }
             if (!resolvedMaterial.emissivePath.empty()) {
                 materialFlags |= kMaterialFlagHasEmissiveMap;
             }
             ctx.objectMaterialFlags[objectId] = materialFlags;
             ctx.objectBoundMaterialSignature[objectId] = materialSignature;
+        }
+
+        void EnsureAnimationDescriptors(RendererContext& ctx) {
+            if (!ctx.scene || !ctx.animationSetLayout || !ctx.animationDescriptorPool) {
+                return;
+            }
+
+            if (ctx.objectAnimationDescriptors.find(0) == ctx.objectAnimationDescriptors.end()) {
+                std::array<glm::mat4, 128> identityPalette{};
+                identityPalette.fill(glm::mat4(1.0f));
+                auto buffer = CreateScope<Buffer>(
+                    *ctx.deviceWrapper,
+                    sizeof(identityPalette),
+                    VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+                buffer->write(identityPalette.data(), sizeof(identityPalette));
+                ctx.objectAnimationBuffers.emplace(0, std::move(buffer));
+
+                VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+                const bool allocated = ctx.animationDescriptorPool->allocateDescriptor(
+                    ctx.animationSetLayout->getDescriptorSetLayout(), descriptorSet);
+                PIECE_CORE_ASSERT(allocated, "Failed to allocate identity animation descriptor set");
+                ctx.objectAnimationDescriptors.emplace(0, descriptorSet);
+                VkDescriptorBufferInfo bufferInfo = ctx.objectAnimationBuffers.at(0)->descriptorInfo(sizeof(identityPalette));
+                DescriptorWriter(*ctx.animationSetLayout, *ctx.animationDescriptorPool)
+                    .writeBuffer(0, &bufferInfo)
+                    .overwrite(descriptorSet);
+            }
+
+            auto view = ctx.scene->GetAllEntitiesViewWith<AnimatorComponent>();
+            for (auto entityHandle : view) {
+                const uint32_t entityId = static_cast<uint32_t>(entityHandle);
+                const auto& animator = view.get<AnimatorComponent>(entityHandle);
+                if (animator.boneMatrices.empty()) {
+                    continue;
+                }
+
+                const VkDeviceSize size = sizeof(glm::mat4) * animator.boneMatrices.size();
+                auto bufferIt = ctx.objectAnimationBuffers.find(entityId);
+                bool descriptorNeedsWrite = false;
+                if (bufferIt == ctx.objectAnimationBuffers.end() || bufferIt->second->size() != size) {
+                    if (bufferIt != ctx.objectAnimationBuffers.end()) {
+                        vkDeviceWaitIdle(ctx.device);
+                    }
+                    auto buffer = CreateScope<Buffer>(
+                        *ctx.deviceWrapper,
+                        size,
+                        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+                        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+                    bufferIt = ctx.objectAnimationBuffers.emplace(entityId, std::move(buffer)).first;
+                    descriptorNeedsWrite = true;
+                }
+                bufferIt->second->write(animator.boneMatrices.data(), size);
+
+                auto descriptorIt = ctx.objectAnimationDescriptors.find(entityId);
+                if (descriptorIt == ctx.objectAnimationDescriptors.end()) {
+                    VkDescriptorSet descriptorSet = VK_NULL_HANDLE;
+                    const bool allocated = ctx.animationDescriptorPool->allocateDescriptor(
+                        ctx.animationSetLayout->getDescriptorSetLayout(), descriptorSet);
+                    PIECE_CORE_ASSERT(allocated, "Failed to allocate animation descriptor set");
+                    descriptorIt = ctx.objectAnimationDescriptors.emplace(entityId, descriptorSet).first;
+                    descriptorNeedsWrite = true;
+                }
+
+                if (descriptorNeedsWrite) {
+                    VkDescriptorBufferInfo bufferInfo = bufferIt->second->descriptorInfo(size);
+                    DescriptorWriter(*ctx.animationSetLayout, *ctx.animationDescriptorPool)
+                        .writeBuffer(0, &bufferInfo)
+                        .overwrite(descriptorIt->second);
+                }
+            }
         }
 
         uint32_t SpawnPrimitive(
@@ -305,6 +380,7 @@ namespace Piece
                                                 ? ctx.globalDescriptorSets[ctx.currentFrame]
                                                 : VK_NULL_HANDLE;
             frameInfo.materialDescriptorSets = &ctx.objectMaterialDescriptors;
+            frameInfo.animationDescriptorSets = &ctx.objectAnimationDescriptors;
             frameInfo.pipeline = pipeline;
             frameInfo.camera = ctx.camera.get();
             frameInfo.scene = ctx.scene.get();
@@ -428,6 +504,15 @@ namespace Piece
                                          .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT)
                                          .build();
 
+        ctx.animationSetLayout = DescriptorSetLayout::Builder(*ctx.deviceWrapper)
+                         .addBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, VK_SHADER_STAGE_VERTEX_BIT)
+                         .build();
+        ctx.animationDescriptorPool = DescriptorPool::Builder(*ctx.deviceWrapper)
+                          .setMaxSets(2048)
+                          .addPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2048)
+                          .setPoolFlags(VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT)
+                          .build();
+
         RendererInternals::CreateGeometryRenderPass(ctx);
         RendererInternals::CreateLightingRenderPass(ctx);
         RendererInternals::CreateBloomRenderPass(ctx);
@@ -438,7 +523,8 @@ namespace Piece
 
         std::vector<VkDescriptorSetLayout> geometrySetLayouts{
             ctx.materialSetLayout->getDescriptorSetLayout(),
-            ctx.globalSetLayout->getDescriptorSetLayout()};
+            ctx.globalSetLayout->getDescriptorSetLayout(),
+            ctx.animationSetLayout->getDescriptorSetLayout()};
         pipelineLayoutInfo.setLayoutCount = static_cast<uint32_t>(geometrySetLayouts.size());
         pipelineLayoutInfo.pSetLayouts = geometrySetLayouts.data();
         pipelineLayoutInfo.pushConstantRangeCount = 1;
@@ -555,6 +641,10 @@ namespace Piece
         RendererInternals::DestroyGeometryRenderPass(ctx);
         RendererInternals::DestroyBillboardResources(ctx);
         ctx.materialDescriptorPool.reset();
+        ctx.animationDescriptorPool.reset();
+        ctx.animationSetLayout.reset();
+        ctx.objectAnimationDescriptors.clear();
+        ctx.objectAnimationBuffers.clear();
         ctx.materialSetLayout.reset();
         ctx.shaderLibrary.reset();
 
@@ -671,6 +761,8 @@ namespace Piece
             }
         }
 
+        EnsureAnimationDescriptors(ctx);
+
         vkResetCommandBuffer(frameResources.commandBuffer, 0);
         FrameInfo frameInfo = BuildFrameInfo(
             frameResources,
@@ -689,6 +781,8 @@ namespace Piece
         }
         PIECE_CORE_ASSERT(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR, "Failed to submit swapchain command buffers");
 
+        ctx.hasRenderedFrame = true;
+
         ctx.currentFrame = (ctx.currentFrame + 1) % ctx.frameResources.size();
     }
 
@@ -702,6 +796,11 @@ namespace Piece
         }
 
         RendererContext &ctx = *s_Context;
+
+        if (ctx.scene)
+        {
+            AnimationSystem::Update(*ctx.scene, ts);
+        }
 
         if (ctx.camera)
         {
@@ -765,7 +864,8 @@ namespace Piece
 
     UUID Renderer::ReadEntityIdAtPixel(uint32_t x, uint32_t y)
     {
-        if (!s_Context || x >= s_Context->swapChainExtent.width || y >= s_Context->swapChainExtent.height)
+        if (!s_Context || !s_Context->hasRenderedFrame
+            || x >= s_Context->swapChainExtent.width || y >= s_Context->swapChainExtent.height)
         {
             return UUID{0};
         }
@@ -1063,6 +1163,7 @@ namespace Piece
             VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT);
         ctx.offscreenLightingColorFormat = ctx.offscreenWorldPosRoughnessFormat;
         ctx.imagesInFlight.assign(ctx.swapChainWrapper->imageCount(), VK_NULL_HANDLE);
+        ctx.hasRenderedFrame = false;
         ctx.objectBoundMaterialSignature.clear();
         ctx.boundEnvironmentSignature.clear();
         if (ctx.scene)
@@ -1087,7 +1188,8 @@ namespace Piece
 
         std::vector<VkDescriptorSetLayout> geometrySetLayouts{
             ctx.materialSetLayout->getDescriptorSetLayout(),
-            ctx.globalSetLayout->getDescriptorSetLayout()};
+            ctx.globalSetLayout->getDescriptorSetLayout(),
+            ctx.animationSetLayout->getDescriptorSetLayout()};
         VkPipelineLayoutCreateInfo geometryLayoutInfo{};
         geometryLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         geometryLayoutInfo.setLayoutCount = static_cast<uint32_t>(geometrySetLayouts.size());

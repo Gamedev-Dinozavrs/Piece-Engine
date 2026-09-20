@@ -207,6 +207,28 @@ void FillVertexAttributesFromGltf(
         fastgltf::copyFromAccessor<fastgltf::math::fvec2>(asset, uvAccessor, uvs.data());
     }
 
+    std::vector<fastgltf::math::u16vec4> jointIds;
+    if (const auto jointsIt = primitive.findAttribute("JOINTS_0"); jointsIt != primitive.attributes.end() && jointsIt->accessorIndex < asset.accessors.size()) {
+        const auto& jointsAccessor = asset.accessors[jointsIt->accessorIndex];
+        jointIds.resize(jointsAccessor.count);
+        if (jointsAccessor.componentType == fastgltf::ComponentType::UnsignedByte) {
+            std::vector<fastgltf::math::u8vec4> values(jointsAccessor.count);
+            fastgltf::copyFromAccessor<fastgltf::math::u8vec4>(asset, jointsAccessor, values.data());
+            for (std::size_t i = 0; i < values.size(); ++i) {
+                jointIds[i] = fastgltf::math::u16vec4(values[i][0], values[i][1], values[i][2], values[i][3]);
+            }
+        } else {
+            fastgltf::copyFromAccessor<fastgltf::math::u16vec4>(asset, jointsAccessor, jointIds.data());
+        }
+    }
+
+    std::vector<fastgltf::math::fvec4> jointWeights;
+    if (const auto weightsIt = primitive.findAttribute("WEIGHTS_0"); weightsIt != primitive.attributes.end() && weightsIt->accessorIndex < asset.accessors.size()) {
+        const auto& weightsAccessor = asset.accessors[weightsIt->accessorIndex];
+        jointWeights.resize(weightsAccessor.count);
+        fastgltf::copyFromAccessor<fastgltf::math::fvec4>(asset, weightsAccessor, jointWeights.data());
+    }
+
     meshData.vertices.resize(positions.size());
     meshData.hasNormals = normals.size() == positions.size();
     for (std::size_t i = 0; i < positions.size(); ++i) {
@@ -220,6 +242,12 @@ void FillVertexAttributesFromGltf(
             vertex.normal = {normals[i][0], normals[i][1], normals[i][2]};
         } else {
             vertex.normal = {0.0f, 0.0f, 1.0f};
+        }
+        if (i < jointIds.size()) {
+            vertex.jointIds = {jointIds[i][0], jointIds[i][1], jointIds[i][2], jointIds[i][3]};
+        }
+        if (i < jointWeights.size()) {
+            vertex.jointWeights = {jointWeights[i][0], jointWeights[i][1], jointWeights[i][2], jointWeights[i][3]};
         }
         meshData.vertices[i] = vertex;
     }
@@ -242,6 +270,163 @@ void FillVertexAttributesFromGltf(
             meshData.indices[i] = static_cast<uint32_t>(i);
         }
     }
+}
+
+bool FillAnimationDataFromGltf(const fastgltf::Asset& asset, ImportedModelData& model, std::string* outError) {
+    if (asset.skins.empty()) {
+        return true;
+    }
+
+    const fastgltf::Skin& skin = asset.skins.front();
+    if (skin.joints.empty()) {
+        return true;
+    }
+    if (skin.joints.size() > 128) {
+        if (outError) {
+            *outError = "glTF skin has more than the supported 128 joints";
+        }
+        return false;
+    }
+
+    std::unordered_map<std::size_t, int32_t> nodeToJoint;
+    nodeToJoint.reserve(skin.joints.size());
+    for (std::size_t jointIndex = 0; jointIndex < skin.joints.size(); ++jointIndex) {
+        nodeToJoint.emplace(skin.joints[jointIndex], static_cast<int32_t>(jointIndex));
+    }
+
+    std::vector<fastgltf::math::fmat4x4> inverseBindMatrices(skin.joints.size());
+    for (auto& matrix : inverseBindMatrices) {
+        matrix = fastgltf::math::fmat4x4(1.0f);
+    }
+    if (skin.inverseBindMatrices.has_value()) {
+        const std::size_t accessorIndex = skin.inverseBindMatrices.value();
+        if (accessorIndex >= asset.accessors.size()) {
+            if (outError) {
+                *outError = "glTF inverse bind matrix accessor index out of bounds";
+            }
+            return false;
+        }
+        const auto& accessor = asset.accessors[accessorIndex];
+        if (accessor.count != skin.joints.size()) {
+            if (outError) {
+                *outError = "glTF inverse bind matrix count does not match skin joint count";
+            }
+            return false;
+        }
+        fastgltf::copyFromAccessor<fastgltf::math::fmat4x4>(asset, accessor, inverseBindMatrices.data());
+    }
+
+    model.joints.reserve(skin.joints.size());
+    for (std::size_t jointIndex = 0; jointIndex < skin.joints.size(); ++jointIndex) {
+        const std::size_t nodeIndex = skin.joints[jointIndex];
+        if (nodeIndex >= asset.nodes.size()) {
+            continue;
+        }
+
+        ImportedJoint joint{};
+        joint.name = asset.nodes[nodeIndex].name.empty()
+            ? ("Joint " + std::to_string(jointIndex))
+            : std::string(asset.nodes[nodeIndex].name);
+        joint.inverseBindMatrix = glm::mat4(1.0f);
+        for (int column = 0; column < 4; ++column) {
+            for (int row = 0; row < 4; ++row) {
+                joint.inverseBindMatrix[column][row] = inverseBindMatrices[jointIndex][column][row];
+            }
+        }
+
+        if (const auto* transform = std::get_if<fastgltf::TRS>(&asset.nodes[nodeIndex].transform)) {
+            joint.bindTranslation = {transform->translation[0], transform->translation[1], transform->translation[2]};
+            joint.bindRotation = {transform->rotation[0], transform->rotation[1], transform->rotation[2], transform->rotation[3]};
+            joint.bindScale = {transform->scale[0], transform->scale[1], transform->scale[2]};
+        }
+
+        for (std::size_t possibleParentIndex = 0; possibleParentIndex < asset.nodes.size(); ++possibleParentIndex) {
+            const auto& children = asset.nodes[possibleParentIndex].children;
+            if (std::find(children.begin(), children.end(), nodeIndex) == children.end()) {
+                continue;
+            }
+            const auto parentIt = nodeToJoint.find(possibleParentIndex);
+            if (parentIt != nodeToJoint.end()) {
+                joint.parentIndex = parentIt->second;
+            }
+            break;
+        }
+
+        model.joints.push_back(std::move(joint));
+    }
+
+    for (const fastgltf::Animation& animation : asset.animations) {
+        ImportedAnimationClip clip{};
+        clip.name = animation.name.empty() ? "Animation" : std::string(animation.name);
+
+        for (const fastgltf::AnimationChannel& channel : animation.channels) {
+            if (!channel.nodeIndex.has_value() || channel.path == fastgltf::AnimationPath::Weights) {
+                continue;
+            }
+
+            const auto jointIt = nodeToJoint.find(channel.nodeIndex.value());
+            if (jointIt == nodeToJoint.end() || channel.samplerIndex >= animation.samplers.size()) {
+                continue;
+            }
+
+            const fastgltf::AnimationSampler& sampler = animation.samplers[channel.samplerIndex];
+            if (sampler.inputAccessor >= asset.accessors.size() || sampler.outputAccessor >= asset.accessors.size()) {
+                continue;
+            }
+
+            const auto& inputAccessor = asset.accessors[sampler.inputAccessor];
+            const auto& outputAccessor = asset.accessors[sampler.outputAccessor];
+            if (sampler.interpolation == fastgltf::AnimationInterpolation::CubicSpline) {
+                continue;
+            }
+
+            ImportedAnimationChannel importedChannel{};
+            importedChannel.jointIndex = jointIt->second;
+            if (channel.nodeIndex.value() < asset.nodes.size()) {
+                importedChannel.jointName = std::string(asset.nodes[channel.nodeIndex.value()].name);
+            }
+            importedChannel.stepInterpolation = sampler.interpolation == fastgltf::AnimationInterpolation::Step;
+            importedChannel.times.resize(inputAccessor.count);
+            fastgltf::copyFromAccessor<float>(asset, inputAccessor, importedChannel.times.data());
+            clip.duration = std::max(clip.duration, importedChannel.times.empty() ? 0.0f : importedChannel.times.back());
+
+            if (channel.path == fastgltf::AnimationPath::Translation) {
+                importedChannel.path = ImportedAnimationChannel::Path::Translation;
+                std::vector<fastgltf::math::fvec3> values(outputAccessor.count);
+                fastgltf::copyFromAccessor<fastgltf::math::fvec3>(asset, outputAccessor, values.data());
+                importedChannel.values.reserve(values.size());
+                for (const auto& value : values) {
+                    importedChannel.values.emplace_back(value[0], value[1], value[2], 0.0f);
+                }
+            } else if (channel.path == fastgltf::AnimationPath::Rotation) {
+                importedChannel.path = ImportedAnimationChannel::Path::Rotation;
+                std::vector<fastgltf::math::fquat> values(outputAccessor.count);
+                fastgltf::copyFromAccessor<fastgltf::math::fquat>(asset, outputAccessor, values.data());
+                importedChannel.values.reserve(values.size());
+                for (const auto& value : values) {
+                    importedChannel.values.emplace_back(value[0], value[1], value[2], value[3]);
+                }
+            } else if (channel.path == fastgltf::AnimationPath::Scale) {
+                importedChannel.path = ImportedAnimationChannel::Path::Scale;
+                std::vector<fastgltf::math::fvec3> values(outputAccessor.count);
+                fastgltf::copyFromAccessor<fastgltf::math::fvec3>(asset, outputAccessor, values.data());
+                importedChannel.values.reserve(values.size());
+                for (const auto& value : values) {
+                    importedChannel.values.emplace_back(value[0], value[1], value[2], 0.0f);
+                }
+            }
+
+            if (importedChannel.times.size() == importedChannel.values.size() && !importedChannel.times.empty()) {
+                clip.channels.push_back(std::move(importedChannel));
+            }
+        }
+
+        if (!clip.channels.empty()) {
+            model.animations.push_back(std::move(clip));
+        }
+    }
+
+    return true;
 }
 
 std::filesystem::path TryResolveRelativeTexture(const std::filesystem::path& baseDir, const std::filesystem::path& texPath) {
@@ -572,6 +757,9 @@ bool AssetImporter::ImportOBJ(const std::string& path, ImportedModelData& outMod
 
 bool AssetImporter::ImportGLTF(const std::string& path, ImportedModelData& outModel, std::string* outError) {
     outModel = {};
+    if (outError) {
+        outError->clear();
+    }
     outModel.sourcePath = path;
 
     const std::filesystem::path sourcePath(path);
@@ -610,6 +798,10 @@ bool AssetImporter::ImportGLTF(const std::string& path, ImportedModelData& outMo
     }
 
     const fastgltf::Asset& asset = parsedAsset.get();
+
+    if (!FillAnimationDataFromGltf(asset, outModel, outError)) {
+        return false;
+    }
 
     outModel.materials.reserve(asset.materials.size());
     for (std::size_t i = 0; i < asset.materials.size(); ++i) {
@@ -684,6 +876,9 @@ bool AssetImporter::ImportModel(const std::string& path, ImportedModelData& outM
     }
     if (extension == ".gltf" || extension == ".glb") {
         return ImportGLTF(path, outModel, outError);
+    }
+    if (extension == ".fbx") {
+        return ImportFBX(path, outModel, outError);
     }
 
     if (outError) {

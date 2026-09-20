@@ -14,6 +14,7 @@ class ContentBrowserPanel {
 public:
     ContentBrowserPanel();
     void OnImGuiRender();
+    void SetAnimationTarget(uint32_t entityId) { m_AnimationTargetId = entityId; }
 
     const std::filesystem::path& GetAssetsDirectory() const { return m_AssetsDirectory; }
 
@@ -26,9 +27,12 @@ public:
 
 private:
     void DrawAssetToolbar();
+    void DrawFilesystemAssets();
     void DrawUploadedTemplates();
     void DrawMaterials();
     void DrawMaterialCard(const MaterialView& material, bool isDefault);
+    void LoadMaterialAssets();
+    void SaveMaterialAsset(uint32_t materialId);
     void UploadModelTemplate();
     void SpawnUploadedTemplate(size_t index);
     void RemoveUploadedTemplate(size_t index);
@@ -51,6 +55,9 @@ private:
     uint32_t m_RenameMaterialId = 0;
     char m_RenameMaterialBuffer[128] = {};
     bool m_OpenRenameMaterialPopup = false;
+    std::filesystem::path m_SelectedAssetPath;
+    bool m_MaterialAssetsLoaded = false;
+    uint32_t m_AnimationTargetId = 0;
 };
 
 } // namespace Piece

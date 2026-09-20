@@ -6,6 +6,7 @@
 #include <scene/Entity.h>
 #include <scene/Scene.h>
 #include <renderer/Renderer.h>
+#include <assets/MaterialAssetSerializer.h>
 
 #include <cctype>
 
@@ -23,16 +24,17 @@ constexpr uint32_t kMaxPointLights = 4;
 struct MaterialRecord {
     uint32_t id{0};
     std::string name;
+    std::string assetPath;
     MaterialTextures textures{};
     MaterialSurfaceFactors surfaceFactors{};
     MaterialColors colors{};
+    MaterialRenderSettings renderSettings{};
 };
 
 Ref<Scene> s_ActiveScene = nullptr;
 float s_SpecularStrength = 1.0f;
 float s_SpecularShininessMin = 8.0f;
 float s_SpecularShininessMax = 128.0f;
-EnvironmentSettings s_EnvironmentSettings{};
 uint32_t s_NextMaterialId = 1;
 std::vector<MaterialRecord> s_Materials;
 uint32_t s_DefaultMaterialId = 0;
@@ -92,6 +94,8 @@ std::string MakeUniqueMaterialName(const std::string& requestedName, uint32_t ig
 Ref<Scene> EnsureScene() {
     if (!s_ActiveScene) {
         s_ActiveScene = CreateRef<Scene>();
+        Entity light = s_ActiveScene->CreateEntity("Directional Light");
+        light.AddComponent<DirectionalLightComponent>();
     }
     return s_ActiveScene;
 }
@@ -201,6 +205,14 @@ std::vector<Entity> CollectPointLights(Scene& scene) {
     return lights;
 }
 
+Entity FindEnvironmentEntity(Scene& scene) {
+    auto view = scene.GetAllEntitiesViewWith<EnvironmentComponent>();
+    for (auto handle : view) {
+        return Entity{handle, &scene};
+    }
+    return {};
+}
+
 } // namespace
 
 Ref<Scene> GetActiveScene() {
@@ -284,6 +296,18 @@ uint32_t SpawnMesh(const Ref<Mesh>& mesh, const SpawnTransform& transform, const
 uint32_t CreateEmptyObject(const std::string& name) {
     Ref<Scene> scene = EnsureScene();
     Entity entity = scene->CreateEntity(name.empty() ? "Empty Object" : name);
+    return static_cast<uint32_t>(entity);
+}
+
+uint32_t CreateEnvironmentObject(const std::string& name) {
+    Ref<Scene> scene = EnsureScene();
+    Entity entity = FindEnvironmentEntity(*scene);
+    if (entity) {
+        return static_cast<uint32_t>(entity);
+    }
+
+    entity = scene->CreateEntity(name.empty() ? "Environment" : name);
+    entity.AddComponent<EnvironmentComponent>();
     return static_cast<uint32_t>(entity);
 }
 
@@ -462,6 +486,90 @@ bool SetEntityImportedModelInfo(uint32_t entityId, const std::string& sourcePath
     return false;
 }
 
+bool SetEntityAnimationData(uint32_t entityId, const std::vector<ImportedJoint>& joints,
+    const std::vector<ImportedAnimationClip>& clips) {
+    if (!s_ActiveScene || joints.empty()) {
+        return false;
+    }
+
+    Ref<Scene> scene = s_ActiveScene;
+    auto view = scene->GetAllEntitiesViewWith<TagComponent>();
+    for (auto handle : view) {
+        if (static_cast<uint32_t>(handle) != entityId) {
+            continue;
+        }
+
+        Entity entity{handle, scene.get()};
+        auto& animator = entity.HasComponent<AnimatorComponent>()
+            ? entity.GetComponent<AnimatorComponent>()
+            : entity.AddComponent<AnimatorComponent>();
+        animator.joints = joints;
+        animator.clips = clips;
+        animator.boneMatrices.assign(joints.size(), glm::mat4(1.0f));
+        animator.currentClip = 0;
+        animator.time = 0.0f;
+        return true;
+    }
+
+    return false;
+}
+
+bool SetEntityAnimationClips(uint32_t entityId, const std::vector<ImportedAnimationClip>& clips) {
+    if (!s_ActiveScene || clips.empty()) {
+        return false;
+    }
+
+    auto view = s_ActiveScene->GetAllEntitiesViewWith<TagComponent>();
+    for (auto handle : view) {
+        if (static_cast<uint32_t>(handle) != entityId) {
+            continue;
+        }
+
+        Entity root{handle, s_ActiveScene.get()};
+        bool applied = false;
+        std::function<void(Entity)> applyToHierarchy = [&](Entity entity) {
+            if (!entity) {
+                return;
+            }
+
+            if (entity.HasComponent<AnimatorComponent>()) {
+                auto& animator = entity.GetComponent<AnimatorComponent>();
+                std::unordered_map<std::string, int32_t> targetJoints;
+                for (size_t jointIndex = 0; jointIndex < animator.joints.size(); ++jointIndex) {
+                    targetJoints[animator.joints[jointIndex].name] = static_cast<int32_t>(jointIndex);
+                }
+
+                animator.clips = clips;
+                for (auto& clip : animator.clips) {
+                    for (auto& channel : clip.channels) {
+                        const auto jointIt = targetJoints.find(channel.jointName);
+                        if (jointIt != targetJoints.end()) {
+                            channel.jointIndex = jointIt->second;
+                        }
+                    }
+                }
+                animator.currentClip = 0;
+                animator.time = 0.0f;
+                animator.playing = true;
+                applied = true;
+            }
+
+            if (!entity.HasComponent<HierarchyComponent>()) {
+                return;
+            }
+            const auto children = entity.GetComponent<HierarchyComponent>().children;
+            for (const UUID& childUuid : children) {
+                applyToHierarchy(FindEntityByUUID(*s_ActiveScene, childUuid));
+            }
+        };
+
+        applyToHierarchy(root);
+        return applied;
+    }
+
+    return false;
+}
+
 uint32_t CreateMaterial(const std::string& name) {
     MaterialRecord material{};
     material.id = s_NextMaterialId++;
@@ -485,12 +593,32 @@ std::vector<MaterialView> GetMaterials() {
         MaterialView view{};
         view.id = material.id;
         view.name = material.name;
+        view.assetPath = material.assetPath;
         view.textures = material.textures;
         view.surfaceFactors = material.surfaceFactors;
         view.colors = material.colors;
+        view.renderSettings = material.renderSettings;
         materials.push_back(std::move(view));
     }
     return materials;
+}
+
+bool SaveMaterialAsset(uint32_t materialId) {
+    for (const auto& material : s_Materials) {
+        if (material.id == materialId && !material.assetPath.empty()) {
+            MaterialView view{};
+            view.id = material.id;
+            view.name = material.name;
+            view.assetPath = material.assetPath;
+            view.textures = material.textures;
+            view.surfaceFactors = material.surfaceFactors;
+            view.colors = material.colors;
+            view.renderSettings = material.renderSettings;
+            return MaterialAssetSerializer::Serialize(view, material.assetPath);
+        }
+    }
+
+    return false;
 }
 
 void ClearMaterials() {
@@ -523,7 +651,19 @@ bool SetMaterialName(uint32_t materialId, const std::string& name) {
         }
 
         material.name = MakeUniqueMaterialName(name, materialId);
+        SaveMaterialAsset(materialId);
         return true;
+    }
+
+    return false;
+}
+
+bool SetMaterialAssetPath(uint32_t materialId, const std::string& path) {
+    for (auto& material : s_Materials) {
+        if (material.id == materialId) {
+            material.assetPath = path;
+            return true;
+        }
     }
 
     return false;
@@ -540,6 +680,7 @@ bool SetMaterialColors(uint32_t materialId, const MaterialColors& colors) {
         material.colors.emissiveEnabled = colors.emissiveEnabled;
         material.colors.hdrBloomEnabled = colors.hdrBloomEnabled;
         material.colors.emissiveBloomEnabled = colors.emissiveBloomEnabled;
+        SaveMaterialAsset(materialId);
         return true;
     }
 
@@ -555,24 +696,31 @@ bool SetMaterialTexturePath(uint32_t materialId, TextureSlot slot, const std::st
         switch (slot) {
         case TextureSlot::Albedo:
             material.textures.albedoPath = path;
+            SaveMaterialAsset(materialId);
             return true;
         case TextureSlot::Normal:
             material.textures.normalPath = path;
+            SaveMaterialAsset(materialId);
             return true;
         case TextureSlot::Height:
             material.textures.heightPath = path;
+            SaveMaterialAsset(materialId);
             return true;
         case TextureSlot::Roughness:
             material.textures.roughnessPath = path;
+            SaveMaterialAsset(materialId);
             return true;
         case TextureSlot::Metallic:
             material.textures.metallicPath = path;
+            SaveMaterialAsset(materialId);
             return true;
         case TextureSlot::AmbientOcclusion:
             material.textures.ambientOcclusionPath = path;
+            SaveMaterialAsset(materialId);
             return true;
         case TextureSlot::Emissive:
             material.textures.emissivePath = path;
+            SaveMaterialAsset(materialId);
             return true;
         default:
             return false;
@@ -582,7 +730,8 @@ bool SetMaterialTexturePath(uint32_t materialId, TextureSlot slot, const std::st
     return false;
 }
 
-bool SetMaterialSurfaceFactors(uint32_t materialId, float roughnessFactor, float metallicFactor) {
+bool SetMaterialSurfaceFactors(uint32_t materialId, float roughnessFactor, float metallicFactor,
+    float normalScale, float occlusionStrength) {
     for (auto& material : s_Materials) {
         if (material.id != materialId) {
             continue;
@@ -590,6 +739,26 @@ bool SetMaterialSurfaceFactors(uint32_t materialId, float roughnessFactor, float
 
         material.surfaceFactors.roughnessFactor = std::clamp(roughnessFactor, 0.0f, 1.0f);
         material.surfaceFactors.metallicFactor = std::clamp(metallicFactor, 0.0f, 1.0f);
+        material.surfaceFactors.normalScale = std::max(0.0f, normalScale);
+        material.surfaceFactors.occlusionStrength = std::clamp(occlusionStrength, 0.0f, 1.0f);
+        SaveMaterialAsset(materialId);
+        return true;
+    }
+
+    return false;
+}
+
+bool SetMaterialRenderSettings(uint32_t materialId, const MaterialRenderSettings& settings) {
+    for (auto& material : s_Materials) {
+        if (material.id != materialId) {
+            continue;
+        }
+
+        material.renderSettings.alphaMode = settings.alphaMode;
+        material.renderSettings.alphaCutoff = std::clamp(settings.alphaCutoff, 0.0f, 1.0f);
+        material.renderSettings.doubleSided = settings.doubleSided;
+        material.renderSettings.unlit = settings.unlit;
+        SaveMaterialAsset(materialId);
         return true;
     }
 
@@ -620,6 +789,16 @@ MaterialColors ResolveMaterialColors(uint32_t materialId, const MaterialColors& 
     for (const auto& material : s_Materials) {
         if (material.id == materialId) {
             return material.colors;
+        }
+    }
+
+    return fallback;
+}
+
+MaterialRenderSettings ResolveMaterialRenderSettings(uint32_t materialId, const MaterialRenderSettings& fallback) {
+    for (const auto& material : s_Materials) {
+        if (material.id == materialId) {
+            return material.renderSettings;
         }
     }
 
@@ -719,18 +898,44 @@ void SetLightingSettings(const LightingSettings& settings) {
 }
 
 EnvironmentSettings GetEnvironmentSettings() {
-    return s_EnvironmentSettings;
+    EnvironmentSettings settings{};
+    if (!s_ActiveScene) {
+        return settings;
+    }
+
+    Entity entity = FindEnvironmentEntity(*s_ActiveScene);
+    if (!entity) {
+        return settings;
+    }
+
+    const auto& environment = entity.GetComponent<EnvironmentComponent>();
+    settings.enabled = environment.enabled;
+    settings.hdrPath = environment.hdrPath;
+    settings.intensity = environment.intensity;
+    settings.diffuseStrength = environment.diffuseStrength;
+    settings.specularStrength = environment.specularStrength;
+    settings.ambientStrength = environment.ambientStrength;
+    settings.aaTechnique = static_cast<AATechnique>(environment.aaTechnique);
+    settings.msaaSampleCount = environment.msaaSampleCount;
+    return settings;
 }
 void SetEnvironmentSettings(const EnvironmentSettings& settings) {
-    s_EnvironmentSettings.enabled = settings.enabled;
-    s_EnvironmentSettings.diffuseMapPath = settings.diffuseMapPath;
-    s_EnvironmentSettings.specularMapPath = settings.specularMapPath;
-    s_EnvironmentSettings.intensity = std::max(0.0f, settings.intensity);
-    s_EnvironmentSettings.diffuseStrength = std::max(0.0f, settings.diffuseStrength);
-    s_EnvironmentSettings.specularStrength = std::max(0.0f, settings.specularStrength);
-    s_EnvironmentSettings.ambientStrength = std::max(0.0f, settings.ambientStrength);
-    s_EnvironmentSettings.aaTechnique = settings.aaTechnique;
-    s_EnvironmentSettings.msaaSampleCount = settings.msaaSampleCount;
+    Ref<Scene> scene = EnsureScene();
+    Entity entity = FindEnvironmentEntity(*scene);
+    if (!entity) {
+        entity = scene->CreateEntity("Environment");
+        entity.AddComponent<EnvironmentComponent>();
+    }
+
+    auto& environment = entity.GetComponent<EnvironmentComponent>();
+    environment.enabled = settings.enabled;
+    environment.hdrPath = settings.hdrPath;
+    environment.intensity = std::max(0.0f, settings.intensity);
+    environment.diffuseStrength = std::max(0.0f, settings.diffuseStrength);
+    environment.specularStrength = std::max(0.0f, settings.specularStrength);
+    environment.ambientStrength = std::max(0.0f, settings.ambientStrength);
+    environment.aaTechnique = static_cast<uint32_t>(settings.aaTechnique);
+    environment.msaaSampleCount = settings.msaaSampleCount;
 }
 
 SpecularSettings GetSpecularSettings() {
@@ -756,7 +961,6 @@ void ClearScene() {
     s_Materials.clear();
     s_NextMaterialId = 1;
     s_DefaultMaterialId = 0;
-    s_EnvironmentSettings = EnvironmentSettings{};
 }
 
 } // namespace World

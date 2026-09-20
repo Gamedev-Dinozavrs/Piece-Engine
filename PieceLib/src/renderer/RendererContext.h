@@ -129,6 +129,8 @@ struct RendererContext {
 
     Scope<DescriptorSetLayout> materialSetLayout;
     Scope<DescriptorPool> materialDescriptorPool;
+    Scope<DescriptorSetLayout> animationSetLayout;
+    Scope<DescriptorPool> animationDescriptorPool;
     Scope<DescriptorSetLayout> globalSetLayout;
     Scope<DescriptorPool> globalDescriptorPool;
     Scope<DescriptorSetLayout> compositeSetLayout;
@@ -143,6 +145,8 @@ struct RendererContext {
     Ref<Texture> pointLightIconTexture;
     std::unordered_map<std::string, Ref<Texture>> textureCache;
     std::unordered_map<uint32_t, VkDescriptorSet> objectMaterialDescriptors;
+    std::unordered_map<uint32_t, VkDescriptorSet> objectAnimationDescriptors;
+    std::unordered_map<uint32_t, Scope<Buffer>> objectAnimationBuffers;
     std::unordered_map<uint32_t, std::string> objectBoundMaterialSignature;
     std::unordered_map<uint32_t, uint32_t> objectMaterialFlags;
     std::string boundEnvironmentSignature;
@@ -189,6 +193,7 @@ struct RendererContext {
     std::vector<VkSemaphore> renderFinishedSemaphores;
     size_t currentFrame{0};
     uint32_t lastRenderedImageIndex{0};
+    bool hasRenderedFrame{false};
 
 };
 

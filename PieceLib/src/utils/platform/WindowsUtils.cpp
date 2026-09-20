@@ -11,6 +11,23 @@
 
 namespace Piece::Platform {
 
+namespace {
+
+std::string CopyWindowsFilter(const char* filter) {
+    if (filter == nullptr) {
+        return {};
+    }
+
+    size_t length = 0;
+    while (filter[length] != '\0' || filter[length + 1] != '\0') {
+        ++length;
+    }
+    length += 2;
+    return std::string(filter, length);
+}
+
+} // namespace
+
 std::string OpenFileDialog(const char* filter) {
 #ifdef PLATFORM_WINDOWS
     OPENFILENAMEA ofn{};
@@ -32,7 +49,7 @@ std::string OpenFileDialog(const char* filter) {
 }
 
 void OpenFileDialogAsync(const char* filter, std::function<void(std::string)> onResult) {
-    BackgroundService::Submit([filter = std::string(filter), onResult = std::move(onResult)]() {
+    BackgroundService::Submit([filter = CopyWindowsFilter(filter), onResult = std::move(onResult)]() {
         std::string result = OpenFileDialog(filter.c_str());
         if (!result.empty()) {
             BackgroundService::PostToMainThread([result = std::move(result), onResult = std::move(onResult)]() {

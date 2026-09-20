@@ -1255,8 +1255,8 @@ void CreateCompositeResources(RendererContext &ctx)
         return texture;
     };
 
-    Ref<Texture> envDiffuseTexture = getOrCreateTexture(environment.diffuseMapPath);
-    Ref<Texture> envSpecularTexture = getOrCreateTexture(environment.specularMapPath);
+    Ref<Texture> envDiffuseTexture = getOrCreateTexture(environment.hdrPath);
+    Ref<Texture> envSpecularTexture = envDiffuseTexture;
 
     ctx.compositeDescriptorSets.assign(imageCount, VK_NULL_HANDLE);
     ctx.presentDescriptorSets.assign(imageCount, VK_NULL_HANDLE);
@@ -1467,6 +1467,11 @@ void CreateGraphicsPipeline(RendererContext& ctx) {
 
     PipelineConfigInfo billboardConfig{};
     Pipeline::defaultPipelineConfigInfo(billboardConfig);
+    billboardConfig.attributeDescriptions = {
+        {0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, position)},
+        {1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, color)},
+        {2, 0, VK_FORMAT_R32G32_SFLOAT, offsetof(Vertex, uv)},
+        {3, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(Vertex, normal)}};
     billboardConfig.renderPass = ctx.geometryRenderPass;
     billboardConfig.pipelineLayout = ctx.billboardPipelineLayout;
     billboardConfig.colorBlendAttachments = geometryConfig.colorBlendAttachments;

@@ -5,6 +5,7 @@
 #include "imgui.h"
 
 #include <assets/AssetImporter.h>
+#include <assets/MaterialAssetSerializer.h>
 #include <core/Log.h>
 #include <renderer/Renderer.h>
 #include <scene/World.h>
@@ -76,9 +77,105 @@ std::string ToLower(std::string value) {
     return value;
 }
 
+std::string MakeSafeFileName(std::string value) {
+    for (char& character : value) {
+        if (character == '<' || character == '>' || character == ':' || character == '"'
+            || character == '/' || character == '\\' || character == '|' || character == '?'
+            || character == '*') {
+            character = '_';
+        }
+    }
+    return value.empty() ? "Material" : value;
+}
+
+enum class AssetTileKind {
+    Material,
+    Model,
+    Scene,
+    Texture,
+    Animation,
+    Folder
+};
+
 bool IsSupportedModelFile(const std::filesystem::path& path) {
     const std::string ext = ToLower(path.extension().string());
-    return ext == ".obj" || ext == ".gltf" || ext == ".glb";
+    return ext == ".obj" || ext == ".gltf" || ext == ".glb" || ext == ".fbx";
+}
+
+AssetTileKind GetAssetTileKind(const std::filesystem::path& path) {
+    if (std::filesystem::is_directory(path)) {
+        return AssetTileKind::Folder;
+    }
+    const std::string ext = ToLower(path.extension().string());
+    if (ext == ".piecescene") {
+        return AssetTileKind::Scene;
+    }
+    if (ext == ".piece-material") {
+        return AssetTileKind::Material;
+    }
+    if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".bmp" || ext == ".tga" || ext == ".hdr") {
+        return AssetTileKind::Texture;
+    }
+    if (ext == ".anim" || ext == ".animation") {
+        return AssetTileKind::Animation;
+    }
+    return AssetTileKind::Model;
+}
+
+void DrawAssetTileIcon(ImDrawList* drawList, const ImVec2& min, const ImVec2& max, AssetTileKind kind, bool selected) {
+    const ImU32 background = selected ? IM_COL32(44, 76, 104, 255) : IM_COL32(31, 39, 48, 255);
+    const ImU32 outline = selected ? IM_COL32(255, 214, 96, 255) : IM_COL32(94, 113, 132, 255);
+    const ImU32 accent = kind == AssetTileKind::Material ? IM_COL32(222, 174, 91, 255)
+        : kind == AssetTileKind::Model ? IM_COL32(102, 180, 219, 255)
+        : kind == AssetTileKind::Scene ? IM_COL32(154, 188, 220, 255)
+        : kind == AssetTileKind::Texture ? IM_COL32(104, 188, 132, 255)
+        : kind == AssetTileKind::Animation ? IM_COL32(211, 126, 188, 255)
+        : IM_COL32(191, 157, 85, 255);
+    drawList->AddRectFilled(min, max, background, 6.0f);
+    drawList->AddRect(min, max, outline, 6.0f, 0, selected ? 2.5f : 1.0f);
+
+    const ImVec2 center((min.x + max.x) * 0.5f, (min.y + max.y) * 0.5f);
+    if (kind == AssetTileKind::Material) {
+        drawList->AddCircleFilled(center, 15.0f, accent);
+        drawList->AddCircle(ImVec2(center.x - 4.0f, center.y - 5.0f), 5.0f, IM_COL32(255, 235, 188, 220), 16, 2.0f);
+    } else if (kind == AssetTileKind::Model) {
+        const ImVec2 top(center.x, center.y - 17.0f);
+        const ImVec2 left(center.x - 17.0f, center.y - 7.0f);
+        const ImVec2 right(center.x + 17.0f, center.y - 7.0f);
+        const ImVec2 bottom(center.x, center.y + 12.0f);
+        drawList->AddQuadFilled(top, right, bottom, left, accent);
+        drawList->AddLine(top, right, IM_COL32(231, 246, 255, 220), 1.5f);
+        drawList->AddLine(right, bottom, IM_COL32(231, 246, 255, 220), 1.5f);
+        drawList->AddLine(bottom, left, IM_COL32(231, 246, 255, 220), 1.5f);
+        drawList->AddLine(left, top, IM_COL32(231, 246, 255, 220), 1.5f);
+    } else if (kind == AssetTileKind::Scene) {
+        const ImVec2 pageMin(center.x - 15.0f, center.y - 18.0f);
+        const ImVec2 pageMax(center.x + 15.0f, center.y + 18.0f);
+        drawList->AddRectFilled(pageMin, pageMax, accent, 3.0f);
+        drawList->AddLine(ImVec2(center.x - 8.0f, center.y - 5.0f), ImVec2(center.x + 8.0f, center.y - 5.0f), background, 2.0f);
+        drawList->AddLine(ImVec2(center.x - 8.0f, center.y + 3.0f), ImVec2(center.x + 8.0f, center.y + 3.0f), background, 2.0f);
+    } else if (kind == AssetTileKind::Texture) {
+        drawList->AddRectFilled(ImVec2(center.x - 18.0f, center.y - 15.0f), ImVec2(center.x + 18.0f, center.y + 15.0f), accent, 3.0f);
+        drawList->AddTriangleFilled(ImVec2(center.x - 14.0f, center.y + 10.0f), ImVec2(center.x - 2.0f, center.y - 5.0f), ImVec2(center.x + 7.0f, center.y + 10.0f), background);
+        drawList->AddCircleFilled(ImVec2(center.x + 9.0f, center.y - 7.0f), 4.0f, IM_COL32(255, 239, 169, 255));
+    } else if (kind == AssetTileKind::Animation) {
+        drawList->AddCircleFilled(center, 15.0f, accent);
+        drawList->AddTriangleFilled(ImVec2(center.x - 4.0f, center.y - 8.0f), ImVec2(center.x - 4.0f, center.y + 8.0f), ImVec2(center.x + 9.0f, center.y), IM_COL32(255, 240, 255, 230));
+    } else {
+        drawList->AddRectFilled(ImVec2(center.x - 19.0f, center.y - 12.0f), ImVec2(center.x + 19.0f, center.y + 14.0f), accent, 3.0f);
+        drawList->AddRectFilled(ImVec2(center.x - 15.0f, center.y - 17.0f), ImVec2(center.x - 1.0f, center.y - 10.0f), accent, 2.0f);
+    }
+}
+
+void DrawAssetTile(const char* id, const std::string& label, AssetTileKind kind, bool selected) {
+    const ImVec2 tileSize(112.0f, 104.0f);
+    ImGui::InvisibleButton(id, tileSize);
+    const ImVec2 min = ImGui::GetItemRectMin();
+    const ImVec2 max = ImGui::GetItemRectMax();
+    const ImVec2 iconMin(min.x + 8.0f, min.y + 8.0f);
+    const ImVec2 iconMax(max.x - 8.0f, min.y + 64.0f);
+    DrawAssetTileIcon(ImGui::GetWindowDrawList(), iconMin, iconMax, kind, selected);
+    ImGui::GetWindowDrawList()->AddText(ImVec2(min.x + 8.0f, min.y + 72.0f), IM_COL32(232, 238, 244, 255), label.c_str());
 }
 
 } // namespace
@@ -88,6 +185,7 @@ ContentBrowserPanel::ContentBrowserPanel()
     if (!std::filesystem::exists(m_AssetsDirectory)) {
         std::filesystem::create_directories(m_AssetsDirectory);
     }
+    LoadMaterialAssets();
 }
 
 void ContentBrowserPanel::OnImGuiRender() {
@@ -100,6 +198,7 @@ void ContentBrowserPanel::OnImGuiRender() {
     }
 
     DrawAssetToolbar();
+    DrawFilesystemAssets();
     DrawUploadedTemplates();
 
     if (ImGui::IsWindowFocused() && ImGui::IsKeyPressed(ImGuiKey_F2) && m_SelectedMaterialId != 0) {
@@ -129,6 +228,7 @@ void ContentBrowserPanel::OnImGuiRender() {
         ImGui::InputText("Name", m_CreateMaterialBuffer, sizeof(m_CreateMaterialBuffer));
         if (ImGui::Button("Create")) {
             const uint32_t materialId = World::CreateMaterial(m_CreateMaterialBuffer);
+            SaveMaterialAsset(materialId);
             m_StatusMessage = "Created material " + std::to_string(materialId) + ".";
             m_StatusIsError = false;
             ImGui::CloseCurrentPopup();
@@ -148,6 +248,7 @@ void ContentBrowserPanel::OnImGuiRender() {
         ImGui::InputText("Name", m_RenameMaterialBuffer, sizeof(m_RenameMaterialBuffer));
         if (ImGui::Button("Rename")) {
             if (World::SetMaterialName(m_RenameMaterialId, m_RenameMaterialBuffer)) {
+                SaveMaterialAsset(m_RenameMaterialId);
                 m_StatusMessage = "Renamed material.";
                 m_StatusIsError = false;
             }
@@ -165,6 +266,10 @@ void ContentBrowserPanel::OnImGuiRender() {
 
 void ContentBrowserPanel::DrawAssetToolbar() {
     ImGui::Text("Asset Root: %s", m_AssetsDirectory.string().c_str());
+    ImGui::TextDisabled("Current: %s", m_CurrentDirectory.string().c_str());
+    if (m_CurrentDirectory != m_AssetsDirectory && ImGui::SmallButton("Up##AssetDirectory")) {
+        m_CurrentDirectory = m_CurrentDirectory.parent_path();
+    }
     ImGui::TextDisabled("Drag a material card onto an entity's Material Slot.");
 
     if (!m_StatusMessage.empty()) {
@@ -174,50 +279,6 @@ void ContentBrowserPanel::DrawAssetToolbar() {
             ImGui::TextColored(ImVec4(0.3f, 0.9f, 0.4f, 1.0f), "%s", m_StatusMessage.c_str());
         }
 
-        if (ImGui::CollapsingHeader("Environment Lighting")) {
-            EnvironmentSettings environment = World::GetEnvironmentSettings();
-            ImGui::Checkbox("Enabled", &environment.enabled);
-            ImGui::DragFloat("Intensity", &environment.intensity, 0.01f, 0.0f, 8.0f);
-            ImGui::DragFloat("Diffuse Strength", &environment.diffuseStrength, 0.01f, 0.0f, 4.0f);
-            ImGui::DragFloat("Specular Strength", &environment.specularStrength, 0.01f, 0.0f, 4.0f);
-            ImGui::Text("Diffuse: %s", GetDisplayFileName(environment.diffuseMapPath).c_str());
-            if (ImGui::SmallButton("Browse##DiffuseEnvironment")) {
-                Platform::OpenFileDialogAsync(
-                    "Environment Files\0*.hdr;*.png;*.jpg;*.jpeg\0All Files\0*.*\0",
-                    [](std::string path) {
-                        if (path.empty()) {
-                            return;
-                        }
-                        EnvironmentSettings updated = World::GetEnvironmentSettings();
-                        updated.diffuseMapPath = path;
-                        updated.enabled = true;
-                        World::SetEnvironmentSettings(updated);
-                    });
-            }
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Clear##DiffuseEnvironment")) {
-                environment.diffuseMapPath.clear();
-            }
-            ImGui::Text("Specular: %s", GetDisplayFileName(environment.specularMapPath).c_str());
-            if (ImGui::SmallButton("Browse##SpecularEnvironment")) {
-                Platform::OpenFileDialogAsync(
-                    "Environment Files\0*.hdr;*.png;*.jpg;*.jpeg\0All Files\0*.*\0",
-                    [](std::string path) {
-                        if (path.empty()) {
-                            return;
-                        }
-                        EnvironmentSettings updated = World::GetEnvironmentSettings();
-                        updated.specularMapPath = path;
-                        updated.enabled = true;
-                        World::SetEnvironmentSettings(updated);
-                    });
-            }
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Clear##SpecularEnvironment")) {
-                environment.specularMapPath.clear();
-            }
-            World::SetEnvironmentSettings(environment);
-        }
     }
 
     if (ImGui::Button("Upload Model Placeholder")) {
@@ -226,23 +287,69 @@ void ContentBrowserPanel::DrawAssetToolbar() {
 
 }
 
+void ContentBrowserPanel::DrawFilesystemAssets() {
+    std::vector<std::filesystem::path> entries;
+    std::error_code error;
+    for (const auto& entry : std::filesystem::directory_iterator(m_CurrentDirectory, error)) {
+        if (!error) {
+            entries.push_back(entry.path());
+        }
+    }
+    std::sort(entries.begin(), entries.end(), [](const auto& left, const auto& right) {
+        const bool leftDirectory = std::filesystem::is_directory(left);
+        const bool rightDirectory = std::filesystem::is_directory(right);
+        if (leftDirectory != rightDirectory) {
+            return leftDirectory > rightDirectory;
+        }
+        return ToLower(left.filename().string()) < ToLower(right.filename().string());
+    });
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Assets");
+    if (entries.empty()) {
+        ImGui::TextDisabled("This folder is empty.");
+        return;
+    }
+
+    const float tileWidth = 112.0f;
+    const int columnCount = std::max(1, static_cast<int>(ImGui::GetContentRegionAvail().x / tileWidth));
+    for (size_t index = 0; index < entries.size(); ++index) {
+        const auto& path = entries[index];
+        ImGui::PushID(path.string().c_str());
+        const bool selected = path == m_SelectedAssetPath;
+        DrawAssetTile("##FilesystemTile", path.stem().string(), GetAssetTileKind(path), selected);
+        if (ImGui::IsItemClicked()) {
+            m_SelectedAssetPath = path;
+            if (ImGui::IsMouseDoubleClicked(0)) {
+                if (std::filesystem::is_directory(path)) {
+                    m_CurrentDirectory = path;
+                } else if (IsSupportedModelFile(path)) {
+                    UploadedObjTemplate uploaded{};
+                    uploaded.name = path.stem().string();
+                    uploaded.sourcePath = path;
+                    m_UploadedObjTemplates.push_back(std::move(uploaded));
+                    SpawnUploadedTemplate(m_UploadedObjTemplates.size() - 1);
+                } else if (ToLower(path.extension().string()) == ".piecescene") {
+                    m_StatusMessage = "Scene selected: " + path.filename().string();
+                    m_StatusIsError = false;
+                }
+            }
+        }
+        ImGui::PopID();
+        if (static_cast<int>((index + 1) % static_cast<size_t>(columnCount)) != 0) {
+            ImGui::SameLine();
+        }
+    }
+}
+
 void ContentBrowserPanel::DrawMaterialCard(const MaterialView& material, bool isDefault) {
     ImGui::BeginGroup();
 
-    const ImVec2 cardSize(96.0f, 72.0f);
     const bool selected = material.id == m_SelectedMaterialId;
-    ImGui::InvisibleButton("##MaterialIcon", cardSize);
+    DrawAssetTile("##MaterialTile", material.name, AssetTileKind::Material, selected);
     if (ImGui::IsItemClicked()) {
         m_SelectedMaterialId = material.id;
     }
-    const ImVec2 min = ImGui::GetItemRectMin();
-    const ImVec2 max = ImGui::GetItemRectMax();
-    ImDrawList* drawList = ImGui::GetWindowDrawList();
-    const ImU32 fill = isDefault ? IM_COL32(62, 104, 146, 255) : IM_COL32(100, 78, 55, 255);
-    drawList->AddRectFilled(min, max, fill, 6.0f);
-    drawList->AddRect(min, max, selected ? IM_COL32(255, 220, 80, 255) : IM_COL32(180, 210, 230, 190), 6.0f, 0, selected ? 2.5f : 1.5f);
-    drawList->AddCircleFilled(ImVec2((min.x + max.x) * 0.5f, min.y + 25.0f), 16.0f, IM_COL32(226, 183, 112, 255));
-    drawList->AddText(ImVec2(min.x + 8.0f, min.y + 48.0f), IM_COL32(245, 245, 245, 255), "MATERIAL");
 
     if (ImGui::BeginDragDropSource()) {
         const uint32_t materialId = material.id;
@@ -251,13 +358,72 @@ void ContentBrowserPanel::DrawMaterialCard(const MaterialView& material, bool is
         ImGui::EndDragDropSource();
     }
 
-    ImGui::TextWrapped("%s", material.name.c_str());
     if (isDefault) {
         ImGui::TextDisabled("Built-in");
     } else {
         ImGui::TextDisabled("Material");
     }
     ImGui::EndGroup();
+}
+
+void ContentBrowserPanel::LoadMaterialAssets() {
+    if (m_MaterialAssetsLoaded) {
+        return;
+    }
+
+    std::error_code error;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(m_AssetsDirectory, error)) {
+        if (error || !entry.is_regular_file() || ToLower(entry.path().extension().string()) != ".piece-material") {
+            continue;
+        }
+
+        MaterialView material{};
+        if (!MaterialAssetSerializer::Deserialize(entry.path().string(), material)) {
+            continue;
+        }
+
+        const uint32_t materialId = World::CreateMaterial(material.name);
+        World::SetMaterialAssetPath(materialId, entry.path().string());
+        World::SetMaterialColors(materialId, material.colors);
+        World::SetMaterialSurfaceFactors(
+            materialId,
+            material.surfaceFactors.roughnessFactor,
+            material.surfaceFactors.metallicFactor,
+            material.surfaceFactors.normalScale,
+            material.surfaceFactors.occlusionStrength);
+        World::SetMaterialRenderSettings(materialId, material.renderSettings);
+        World::SetMaterialTexturePath(materialId, TextureSlot::Albedo, material.textures.albedoPath);
+        World::SetMaterialTexturePath(materialId, TextureSlot::Normal, material.textures.normalPath);
+        World::SetMaterialTexturePath(materialId, TextureSlot::Height, material.textures.heightPath);
+        World::SetMaterialTexturePath(materialId, TextureSlot::Roughness, material.textures.roughnessPath);
+        World::SetMaterialTexturePath(materialId, TextureSlot::Metallic, material.textures.metallicPath);
+        World::SetMaterialTexturePath(materialId, TextureSlot::AmbientOcclusion, material.textures.ambientOcclusionPath);
+        World::SetMaterialTexturePath(materialId, TextureSlot::Emissive, material.textures.emissivePath);
+    }
+
+    m_MaterialAssetsLoaded = true;
+}
+
+void ContentBrowserPanel::SaveMaterialAsset(uint32_t materialId) {
+    const auto materials = World::GetMaterials();
+    auto materialIt = std::find_if(materials.begin(), materials.end(), [materialId](const MaterialView& material) {
+        return material.id == materialId;
+    });
+    if (materialIt == materials.end()) {
+        return;
+    }
+
+    MaterialView material = *materialIt;
+    std::filesystem::path assetPath = material.assetPath;
+    if (assetPath.empty()) {
+        const std::filesystem::path directory = m_AssetsDirectory / "Materials";
+        std::filesystem::create_directories(directory);
+        assetPath = directory / (MakeSafeFileName(material.name) + ".piece-material");
+        World::SetMaterialAssetPath(materialId, assetPath.string());
+        material.assetPath = assetPath.string();
+    }
+
+    MaterialAssetSerializer::Serialize(material, assetPath.string());
 }
 
 void ContentBrowserPanel::DrawMaterials() {
@@ -293,14 +459,17 @@ void ContentBrowserPanel::DrawUploadedTemplates() {
         return;
     }
 
+    const float tileWidth = 112.0f;
+    const int columnCount = std::max(1, static_cast<int>(ImGui::GetContentRegionAvail().x / tileWidth));
     for (size_t i = 0; i < m_UploadedObjTemplates.size(); ++i) {
         auto& uploaded = m_UploadedObjTemplates[i];
         ImGui::PushID(static_cast<int>(i));
 
         const bool selected = (m_SelectedUploadedTemplate == static_cast<int>(i));
         const std::string ext = ToLower(uploaded.sourcePath.extension().string());
-        const std::string label = (ext.empty() ? std::string("MODEL") : ToLower(ext.substr(1))) + "  " + uploaded.name;
-        if (ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick)) {
+        const std::string label = uploaded.name.empty() ? (ext.empty() ? "Model" : ext.substr(1)) : uploaded.name;
+        DrawAssetTile("##ModelTile", label, AssetTileKind::Model, selected);
+        if (ImGui::IsItemClicked()) {
             m_SelectedUploadedTemplate = static_cast<int>(i);
             if (ImGui::IsMouseDoubleClicked(0)) {
                 SpawnUploadedTemplate(i);
@@ -330,9 +499,10 @@ void ContentBrowserPanel::DrawUploadedTemplates() {
             ImGui::EndPopup();
         }
 
-        ImGui::SameLine();
-        ImGui::TextDisabled("Double-click to add");
         ImGui::PopID();
+        if (static_cast<int>((i + 1) % static_cast<size_t>(columnCount)) != 0) {
+            ImGui::SameLine();
+        }
     }
 
     if (m_RenameTemplateIndex >= 0) {
@@ -355,7 +525,7 @@ void ContentBrowserPanel::DrawUploadedTemplates() {
 }
 
 void ContentBrowserPanel::UploadModelTemplate() {
-    const char* modelFilter = "Model Files\0*.obj;*.gltf;*.glb\0All Files\0*.*\0";
+    const char* modelFilter = "Model Files\0*.obj;*.gltf;*.glb;*.fbx\0All Files\0*.*\0";
     Platform::OpenFileDialogAsync(modelFilter, [this](std::string selectedPath) {
         if (selectedPath.empty()) {
             return;
@@ -374,11 +544,23 @@ void ContentBrowserPanel::UploadModelTemplate() {
                 return;
             }
 
-            const std::filesystem::path sourceDir = source.parent_path();
-            const std::filesystem::path targetDir = m_AssetsDirectory / source.stem();
+            std::error_code pathError;
+            const std::filesystem::path normalizedAssets = std::filesystem::weakly_canonical(m_AssetsDirectory, pathError);
+            const std::filesystem::path normalizedSource = std::filesystem::weakly_canonical(source, pathError);
+            const std::filesystem::path relativeSource = std::filesystem::relative(normalizedSource, normalizedAssets, pathError);
+            const std::string relativeSourceString = relativeSource.string();
+            const bool alreadyInAssets = !pathError
+                && relativeSource != "."
+                && relativeSourceString.rfind("..", 0) != 0;
 
-            CopyDirectoryContents(sourceDir, targetDir);
-            const std::filesystem::path importedModel = targetDir / source.filename();
+            std::filesystem::path importedModel = source;
+            if (!alreadyInAssets) {
+                const std::filesystem::path sourceDir = source.parent_path();
+                const std::filesystem::path targetDir = m_AssetsDirectory / source.stem();
+                CopyDirectoryContents(sourceDir, targetDir);
+                importedModel = targetDir / source.filename();
+            }
+
             if (!std::filesystem::exists(importedModel)) {
                 PIECE_ERROR("Imported model missing after copy: {}", importedModel.string());
                 m_StatusMessage = "Upload failed: copied files but model path was not found.";
@@ -414,6 +596,18 @@ void ContentBrowserPanel::SpawnUploadedTemplate(size_t index) {
     if (!AssetImporter::ImportModel(templateInfo.sourcePath.string(), model, &error)) {
         m_StatusMessage = "Create failed: " + error;
         m_StatusIsError = true;
+        return;
+    }
+
+    if (!model.animations.empty()) {
+        if (m_AnimationTargetId == 0 || !World::SetEntityAnimationClips(m_AnimationTargetId, model.animations)) {
+            m_StatusMessage = "Animation loaded, but select the X Bot root first.";
+            m_StatusIsError = true;
+            return;
+        }
+
+        m_StatusMessage = "Applied animation: " + templateInfo.name + ".";
+        m_StatusIsError = false;
         return;
     }
 
@@ -456,6 +650,9 @@ void ContentBrowserPanel::SpawnUploadedTemplate(size_t index) {
                     World::SetEntityMaterial(entityId, itMat->second);
                 }
                 World::SetEntityImportedModelInfo(entityId, templateInfo.sourcePath.string(), meshData.name);
+                if (!model.joints.empty()) {
+                    World::SetEntityAnimationData(entityId, model.joints, model.animations);
+                }
                 ++spawnedCount;
             }
             offset += 1.5f;

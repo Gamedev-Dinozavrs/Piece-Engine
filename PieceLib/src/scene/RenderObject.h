@@ -16,6 +16,12 @@ enum class PrimitiveType {
     Sphere
 };
 
+enum class MaterialAlphaMode : uint8_t {
+    Opaque = 0,
+    Mask,
+    Blend
+};
+
 struct MaterialTextures {
     std::string albedoPath;
     std::string normalPath;
@@ -35,6 +41,13 @@ struct MaterialColors {
     float bloomThreshold{0.8f};
     float bloomIntensity{0.35f};
     float bloomRadius{2.0f};
+};
+
+struct MaterialRenderSettings {
+    MaterialAlphaMode alphaMode{MaterialAlphaMode::Opaque};
+    float alphaCutoff{0.5f};
+    bool doubleSided{false};
+    bool unlit{false};
 };
 
 class RenderObject {

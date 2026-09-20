@@ -1,6 +1,7 @@
 #pragma once
 
 #include <core/UUID.h>
+#include <assets/AssetImporter.h>
 #include <scene/Camera.h>
 #include <scene/RenderObject.h>
 
@@ -119,6 +120,17 @@ struct SpotLightComponent {
     SpotLightComponent(const SpotLightComponent&) = default;
 };
 
+struct EnvironmentComponent {
+    bool enabled{false};
+    std::string hdrPath;
+    float intensity{1.0f};
+    float diffuseStrength{1.0f};
+    float specularStrength{1.0f};
+    float ambientStrength{0.08f};
+    uint32_t aaTechnique{1};
+    uint32_t msaaSampleCount{4};
+};
+
 struct CameraComponent {
     Camera camera{};
     bool primary{true};
@@ -126,6 +138,16 @@ struct CameraComponent {
 
     CameraComponent() = default;
     CameraComponent(const CameraComponent&) = default;
+};
+
+struct AnimatorComponent {
+    std::vector<ImportedJoint> joints;
+    std::vector<ImportedAnimationClip> clips;
+    std::vector<glm::mat4> boneMatrices;
+    uint32_t currentClip{0};
+    float time{0.0f};
+    float speed{1.0f};
+    bool playing{true};
 };
 
 } // namespace Piece

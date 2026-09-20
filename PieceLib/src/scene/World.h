@@ -1,6 +1,7 @@
 #pragma once
 
 #include <core/Core.h>
+#include <assets/AssetImporter.h>
 #include <scene/RenderObject.h>
 
 #include <array>
@@ -59,8 +60,7 @@ struct LightingSettings {
 
 struct EnvironmentSettings {
     bool enabled{false};
-    std::string diffuseMapPath;
-    std::string specularMapPath;
+    std::string hdrPath;
     float intensity{1.0f};
     float diffuseStrength{1.0f};
     float specularStrength{1.0f};
@@ -78,14 +78,18 @@ struct SpawnTransform {
 struct MaterialSurfaceFactors {
     float roughnessFactor{0.75f};
     float metallicFactor{0.0f};
+    float normalScale{1.0f};
+    float occlusionStrength{1.0f};
 };
 
 struct MaterialView {
     uint32_t id{0};
     std::string name;
+    std::string assetPath;
     MaterialTextures textures{};
     MaterialSurfaceFactors surfaceFactors{};
     MaterialColors colors{};
+    MaterialRenderSettings renderSettings{};
 };
 
 struct RenderEntityView {
@@ -107,6 +111,7 @@ uint32_t SpawnCube(const SpawnTransform& transform);
 uint32_t SpawnSphere(const SpawnTransform& transform);
 uint32_t SpawnMesh(const Ref<Mesh>& mesh, const SpawnTransform& transform, const std::string& name = "Imported Mesh", bool hasVertexNormals = true);
 uint32_t CreateEmptyObject(const std::string& name = "Empty Object");
+uint32_t CreateEnvironmentObject(const std::string& name = "Environment");
 bool SetEntityParent(uint32_t childEntityId, uint32_t parentEntityId);
 bool DestroyEntity(uint32_t entityId);
 
@@ -114,6 +119,9 @@ std::vector<RenderEntityView> GetRenderEntities();
 bool SetEntityTransform(uint32_t entityId, const SpawnTransform& transform);
 bool SetEntityMaterial(uint32_t entityId, uint32_t materialId);
 bool SetEntityImportedModelInfo(uint32_t entityId, const std::string& sourcePath, const std::string& meshName);
+bool SetEntityAnimationData(uint32_t entityId, const std::vector<ImportedJoint>& joints,
+    const std::vector<ImportedAnimationClip>& clips);
+bool SetEntityAnimationClips(uint32_t entityId, const std::vector<ImportedAnimationClip>& clips);
 
 uint32_t CreateMaterial(const std::string& name = "Material");
 uint32_t GetDefaultMaterialId();
@@ -125,12 +133,17 @@ void ClearMaterials();
 uint32_t RestoreMaterial(uint32_t id, const std::string& name, const MaterialTextures& textures,
     const MaterialSurfaceFactors& surfaceFactors, const MaterialColors& colors);
 bool SetMaterialName(uint32_t materialId, const std::string& name);
+bool SetMaterialAssetPath(uint32_t materialId, const std::string& path);
+bool SaveMaterialAsset(uint32_t materialId);
 bool SetMaterialColors(uint32_t materialId, const MaterialColors& colors);
 bool SetMaterialTexturePath(uint32_t materialId, TextureSlot slot, const std::string& path);
-bool SetMaterialSurfaceFactors(uint32_t materialId, float roughnessFactor, float metallicFactor);
+bool SetMaterialSurfaceFactors(uint32_t materialId, float roughnessFactor, float metallicFactor,
+    float normalScale = 1.0f, float occlusionStrength = 1.0f);
+bool SetMaterialRenderSettings(uint32_t materialId, const MaterialRenderSettings& settings);
 MaterialTextures ResolveMaterialTextures(uint32_t materialId, const MaterialTextures& fallback = {});
 MaterialSurfaceFactors ResolveMaterialSurfaceFactors(uint32_t materialId, const MaterialSurfaceFactors& fallback = {});
 MaterialColors ResolveMaterialColors(uint32_t materialId, const MaterialColors& fallback = {});
+MaterialRenderSettings ResolveMaterialRenderSettings(uint32_t materialId, const MaterialRenderSettings& fallback = {});
 
 LightingSettings GetLightingSettings();
 void SetLightingSettings(const LightingSettings& settings);

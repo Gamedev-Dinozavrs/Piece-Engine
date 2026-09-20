@@ -163,6 +163,10 @@ void EditorLayer::OnImGuiRender() {
     ImGui::End();
 
     m_SceneHierarchyPanel.OnImGuiRender();
+    m_ContentBrowserPanel.SetAnimationTarget(
+        m_SceneHierarchyPanel.GetSelectedEntity()
+            ? static_cast<uint32_t>(m_SceneHierarchyPanel.GetSelectedEntity())
+            : 0);
     m_ContentBrowserPanel.OnImGuiRender();
 
     Renderer::GetEditorCamera().setInputEnabled(!overEditorPanel);

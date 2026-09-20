@@ -36,9 +36,11 @@ layout(location = 5) out vec4 outBloomParams;
 const int MATERIAL_FLAG_HAS_NORMAL_MAP = 1 << 0;
 const int MATERIAL_FLAG_HAS_EMISSIVE_MAP = 1 << 1;
 const int MATERIAL_FLAG_HAS_METALLIC_MAP = 1 << 2;
+const int MATERIAL_FLAG_HAS_ROUGHNESS_MAP = 1 << 3;
 
-vec3 ComputeTangentSpaceNormal(vec3 baseNormal, vec3 worldPos, vec2 uv, vec3 encodedNormal) {
+vec3 ComputeTangentSpaceNormal(vec3 baseNormal, vec3 worldPos, vec2 uv, vec3 encodedNormal, float normalScale) {
     vec3 tangentNormal = encodedNormal * 2.0 - 1.0;
+    tangentNormal.xy *= normalScale;
 
     // Empty/missing normal maps currently resolve to white fallback texels.
     if (all(greaterThan(encodedNormal, vec3(0.99)))) {
@@ -78,7 +80,11 @@ vec3 ComputeGeometryNormal(vec3 worldPos) {
 }
 
 void main() {
-    MaterialSample material = SampleMaterial(fragUV, (fragMaterialFlags & MATERIAL_FLAG_HAS_METALLIC_MAP) != 0, u_Metallic);
+    MaterialSample material = SampleMaterial(
+        fragUV,
+        (fragMaterialFlags & MATERIAL_FLAG_HAS_ROUGHNESS_MAP) != 0,
+        (fragMaterialFlags & MATERIAL_FLAG_HAS_METALLIC_MAP) != 0,
+        u_Metallic);
     material.albedo.rgb *= pushConstants.baseColor.rgb;
     material.roughness = clamp(material.roughness * pushConstants.materialFactors.x, 0.0, 1.0);
     material.metallic = clamp(material.metallic * pushConstants.materialFactors.y, 0.0, 1.0);
@@ -89,14 +95,14 @@ void main() {
     }
 
     if ((fragMaterialFlags & MATERIAL_FLAG_HAS_NORMAL_MAP) != 0) {
-        normal = ComputeTangentSpaceNormal(normalize(normal), fragWorldPos, fragUV, material.normal);
+        normal = ComputeTangentSpaceNormal(normalize(normal), fragWorldPos, fragUV, material.normal, pushConstants.materialFactors.z);
         if (!gl_FrontFacing) {
             normal = -normal;
         }
     }
 
     outWorldPosRoughness = vec4(fragWorldPos, clamp(material.roughness, 0.0, 1.0));
-    outAlbedoAo = vec4(material.albedo.rgb, clamp(material.ao, 0.0, 1.0));
+    outAlbedoAo = vec4(material.albedo.rgb, clamp(material.ao * pushConstants.materialFactors.w, 0.0, 1.0));
     outNormalAo = vec4(normal * 0.5 + 0.5, clamp(material.metallic, 0.0, 1.0));
     vec3 emissive = (pushConstants.emissiveColor.a > 0.5)
         ? material.emissive * pushConstants.emissiveColor.rgb

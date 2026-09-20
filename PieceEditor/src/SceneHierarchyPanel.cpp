@@ -350,6 +350,9 @@ bool SceneHierarchyPanel::SpawnObjFromPath(const std::filesystem::path& sourcePa
     importedModel.sourcePath = sourcePath.string();
     importedModel.mode = ImportGroupMode::PreserveGroups;
     importedModel.grouped = true;
+    if (!model.joints.empty()) {
+        World::SetEntityAnimationData(rootEntityId, model.joints, model.animations);
+    }
 
     auto& rootHierarchy = rootEntity.GetComponent<HierarchyComponent>();
     rootHierarchy.children.clear();
@@ -369,6 +372,9 @@ bool SceneHierarchyPanel::SpawnObjFromPath(const std::filesystem::path& sourcePa
                 auto itMat = importerMatToWorldMat.find(meshData.materialIndex);
                 if (itMat != importerMatToWorldMat.end()) {
                     World::SetEntityMaterial(entityId, itMat->second);
+                }
+                if (!model.joints.empty()) {
+                    World::SetEntityAnimationData(entityId, model.joints, model.animations);
                 }
                 ++spawnedCount;
             }
@@ -888,6 +894,33 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
                             World::SetMaterialSurfaceFactors(selectedMaterial.id, roughnessFactor, metallicFactor);
                         }
                     }
+
+                    float normalScale = selectedMaterial.surfaceFactors.normalScale;
+                    float occlusionStrength = selectedMaterial.surfaceFactors.occlusionStrength;
+                    if (ImGui::DragFloat("Normal Strength", &normalScale, 0.01f, 0.0f, 2.0f)) {
+                        World::SetMaterialSurfaceFactors(selectedMaterial.id, roughnessFactor, metallicFactor, normalScale, occlusionStrength);
+                    }
+                    if (ImGui::DragFloat("AO Strength", &occlusionStrength, 0.01f, 0.0f, 1.0f)) {
+                        World::SetMaterialSurfaceFactors(selectedMaterial.id, roughnessFactor, metallicFactor, normalScale, occlusionStrength);
+                    }
+
+                    MaterialRenderSettings renderSettings = selectedMaterial.renderSettings;
+                    const char* alphaModeLabels[] = {"Opaque", "Mask", "Blend"};
+                    int alphaMode = static_cast<int>(renderSettings.alphaMode);
+                    if (ImGui::Combo("Alpha Mode", &alphaMode, alphaModeLabels, 3)) {
+                        renderSettings.alphaMode = static_cast<MaterialAlphaMode>(alphaMode);
+                        World::SetMaterialRenderSettings(selectedMaterial.id, renderSettings);
+                    }
+                    if (renderSettings.alphaMode == MaterialAlphaMode::Mask
+                        && ImGui::DragFloat("Alpha Cutoff", &renderSettings.alphaCutoff, 0.01f, 0.0f, 1.0f)) {
+                        World::SetMaterialRenderSettings(selectedMaterial.id, renderSettings);
+                    }
+                    if (ImGui::Checkbox("Double Sided", &renderSettings.doubleSided)) {
+                        World::SetMaterialRenderSettings(selectedMaterial.id, renderSettings);
+                    }
+                    if (ImGui::Checkbox("Unlit", &renderSettings.unlit)) {
+                        World::SetMaterialRenderSettings(selectedMaterial.id, renderSettings);
+                    }
                     if (emissiveEnabled) {
                         colorsChanged |= ImGui::Checkbox("Emissive Bloom Enabled", &emissiveBloomEnabled);
                         colorsChanged |= ImGui::ColorEdit3("Emissive Color", &emissiveColor.x);
@@ -968,6 +1001,64 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
             ImGui::DragFloat("Intensity", &light.intensity, 0.05f, 0.0f, 100.0f);
             ImGui::DragFloat("Inner Cutoff", &light.innerCutoffDegrees, 0.1f, 0.0f, 90.0f);
             ImGui::DragFloat("Outer Cutoff", &light.outerCutoffDegrees, 0.1f, 0.0f, 90.0f);
+            ImGui::TreePop();
+        }
+    }
+
+    if (entity.HasComponent<EnvironmentComponent>()) {
+        if (ImGui::TreeNodeEx("Environment", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed)) {
+            auto& environment = entity.GetComponent<EnvironmentComponent>();
+            ImGui::Checkbox("Enabled", &environment.enabled);
+            ImGui::DragFloat("Intensity", &environment.intensity, 0.01f, 0.0f, 8.0f);
+            ImGui::DragFloat("Diffuse Strength", &environment.diffuseStrength, 0.01f, 0.0f, 4.0f);
+            ImGui::DragFloat("Specular Strength", &environment.specularStrength, 0.01f, 0.0f, 4.0f);
+            ImGui::DragFloat("Ambient Strength", &environment.ambientStrength, 0.01f, 0.0f, 4.0f);
+            ImGui::Text("HDRI: %s", GetDisplayFileName(environment.hdrPath).c_str());
+            if (ImGui::SmallButton("Browse##EnvironmentHDR")) {
+                Platform::OpenFileDialogAsync(
+                    "Environment Maps\0*.hdr;*.exr;*.png;*.jpg;*.jpeg\0All Files\0*.*\0",
+                    [](std::string path) {
+                        if (!path.empty()) {
+                            EnvironmentSettings updated = World::GetEnvironmentSettings();
+                            updated.hdrPath = std::move(path);
+                            updated.enabled = true;
+                            World::SetEnvironmentSettings(updated);
+                        }
+                    });
+            }
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Clear##EnvironmentHDR")) {
+                environment.hdrPath.clear();
+            }
+            ImGui::TreePop();
+        }
+    }
+
+    if (entity.HasComponent<AnimatorComponent>()) {
+        if (ImGui::TreeNodeEx("Animator", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed)) {
+            auto& animator = entity.GetComponent<AnimatorComponent>();
+            ImGui::Text("Joints: %zu", animator.joints.size());
+            ImGui::Text("Clips: %zu", animator.clips.size());
+            ImGui::Checkbox("Playing", &animator.playing);
+            ImGui::DragFloat("Speed", &animator.speed, 0.01f, -4.0f, 4.0f);
+
+            if (!animator.clips.empty()) {
+                animator.currentClip = std::min(
+                    animator.currentClip,
+                    static_cast<uint32_t>(animator.clips.size() - 1));
+                std::vector<const char*> clipNames;
+                clipNames.reserve(animator.clips.size());
+                for (const auto& clip : animator.clips) {
+                    clipNames.push_back(clip.name.c_str());
+                }
+                int selectedClip = static_cast<int>(animator.currentClip);
+                if (ImGui::Combo("Clip", &selectedClip, clipNames.data(), static_cast<int>(clipNames.size()))) {
+                    animator.currentClip = static_cast<uint32_t>(selectedClip);
+                    animator.time = 0.0f;
+                }
+                ImGui::Text("Time: %.2f / %.2f", animator.time, animator.clips[animator.currentClip].duration);
+            }
+
             ImGui::TreePop();
         }
     }

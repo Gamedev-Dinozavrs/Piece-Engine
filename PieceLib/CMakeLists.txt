@@ -40,7 +40,11 @@ set(IMGUIZMO_SOURCES
     ${CMAKE_SOURCE_DIR}/Dependencies/ImGuizmo/src/ImGuizmo.h
 )
 
-add_library(PieceLib STATIC ${CORE} ${WINDOW} ${EVENT} ${LAYER} ${GUI} ${ASSETS} ${RENDERER} ${SCENE} ${UTILS} ${CORE_SOURCES} ${IMGUI_SOURCES} ${IMGUIZMO_SOURCES} ${CMAKE_SOURCE_DIR}/Dependencies/stb_image/stb_image.cpp)
+set_source_files_properties(
+    ${CMAKE_SOURCE_DIR}/Dependencies/ufbx/ufbx.c
+    PROPERTIES LANGUAGE CXX)
+
+add_library(PieceLib STATIC ${CORE} ${WINDOW} ${EVENT} ${LAYER} ${GUI} ${ASSETS} ${RENDERER} ${SCENE} ${UTILS} ${CORE_SOURCES} ${IMGUI_SOURCES} ${IMGUIZMO_SOURCES} ${CMAKE_SOURCE_DIR}/Dependencies/stb_image/stb_image.cpp ${CMAKE_SOURCE_DIR}/Dependencies/ufbx/ufbx.c)
 
 target_precompile_headers(PieceLib PRIVATE src/PiecePCH.h)
 
@@ -69,6 +73,7 @@ target_include_directories(PieceLib
         ${CMAKE_SOURCE_DIR}/Dependencies/entt/include
         ${CMAKE_SOURCE_DIR}/Dependencies/tinyobjloader
         ${CMAKE_SOURCE_DIR}/Dependencies/yaml-cpp/include
+        ${CMAKE_SOURCE_DIR}/Dependencies/ufbx
 )
 
 target_link_libraries(PieceLib

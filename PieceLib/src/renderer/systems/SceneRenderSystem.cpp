@@ -110,6 +110,8 @@ void Record(const RendererContext& ctx, const FrameInfo& frameInfo) {
 		const MaterialSurfaceFactors materialFactors = World::ResolveMaterialSurfaceFactors(materialId);
 		push.materialFactors.x = materialFactors.roughnessFactor;
 		push.materialFactors.y = materialFactors.metallicFactor;
+		push.materialFactors.z = materialFactors.normalScale;
+		push.materialFactors.w = materialFactors.occlusionStrength;
 		const MaterialColors materialColors = entity.HasComponent<MaterialComponent>()
 			? entity.GetComponent<MaterialComponent>().colors
 			: World::ResolveMaterialColors(materialId);
@@ -163,6 +165,22 @@ void Record(const RendererContext& ctx, const FrameInfo& frameInfo) {
 			&descriptorSet,
 			0,
 			nullptr);
+
+		if (frameInfo.animationDescriptorSets != nullptr) {
+			auto animationIt = frameInfo.animationDescriptorSets->find(static_cast<uint32_t>(entityHandle));
+			if (animationIt != frameInfo.animationDescriptorSets->end()) {
+				VkDescriptorSet animationSet = animationIt->second;
+				vkCmdBindDescriptorSets(frameInfo.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+					frameInfo.pipelineLayout, 2, 1, &animationSet, 0, nullptr);
+			} else {
+				auto identityIt = frameInfo.animationDescriptorSets->find(0);
+				if (identityIt != frameInfo.animationDescriptorSets->end()) {
+					VkDescriptorSet animationSet = identityIt->second;
+					vkCmdBindDescriptorSets(frameInfo.commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS,
+						frameInfo.pipelineLayout, 2, 1, &animationSet, 0, nullptr);
+				}
+			}
+		}
 
 		mesh->bind(frameInfo.commandBuffer);
 		mesh->draw(frameInfo.commandBuffer);

@@ -20,22 +20,30 @@ vec2 DirectionToLatLongUV(vec3 dir) {
     return vec2((phi + PI) / (2.0 * PI), theta / PI);
 }
 
+vec3 SampleEquirectangular(sampler2D environment, vec2 uv) {
+    return textureLod(environment, vec2(fract(uv.x), uv.y), 0.0).rgb;
+}
+
+vec3 SampleEquirectangularLod(sampler2D environment, vec2 uv, float lod) {
+    return textureLod(environment, vec2(fract(uv.x), uv.y), 0.0).rgb;
+}
+
 vec3 ComputeBackgroundEnvironment() {
     vec2 ndc = fragUV * 2.0 - 1.0;
     vec4 clip = vec4(ndc, 1.0, 1.0);
     vec4 world = u_Lighting.invViewProj * clip;
-    vec3 worldPos = world.xyz / max(world.w, 1e-6);
+    vec3 worldPos = abs(world.w) > 1e-6 ? world.xyz / world.w : world.xyz;
     vec3 viewDir = normalize(worldPos - u_Lighting.cameraPosition.xyz);
 
     vec2 envUV = DirectionToLatLongUV(viewDir);
-    vec3 envSpec = texture(u_EnvSpecular, envUV).rgb;
-    vec3 envDiff = texture(u_EnvDiffuse, envUV).rgb;
+    vec3 envSpec = SampleEquirectangular(u_EnvSpecular, envUV);
+    vec3 envDiff = SampleEquirectangular(u_EnvDiffuse, envUV);
     vec3 envColor = mix(envDiff, envSpec, 0.7);
     return envColor * max(u_Lighting.iblParams.x, 0.0);
 }
 
 vec3 ComputeEnvironmentLighting(vec3 albedo, vec3 normal, vec3 viewDir, float roughness, float metallic, float ao) {
-    if (u_Lighting.iblParams.x <= 0.0) {
+    if (u_Lighting.iblParams.x <= 0.0 || metallic <= 0.001) {
         return vec3(0.0);
     }
 
@@ -44,12 +52,12 @@ vec3 ComputeEnvironmentLighting(vec3 albedo, vec3 normal, vec3 viewDir, float ro
     vec3 R = reflect(-V, N);
 
     vec2 diffuseUV = DirectionToLatLongUV(N);
-    vec3 irradiance = texture(u_EnvDiffuse, diffuseUV).rgb;
+    vec3 irradiance = SampleEquirectangular(u_EnvDiffuse, diffuseUV);
 
     float maxLod = max(u_Lighting.iblParams.w, 0.0);
     float lod = roughness * maxLod;
     vec2 specularUV = DirectionToLatLongUV(R);
-    vec3 prefiltered = textureLod(u_EnvSpecular, specularUV, lod).rgb;
+    vec3 prefiltered = SampleEquirectangularLod(u_EnvSpecular, specularUV, lod);
 
     vec3 F0 = mix(vec3(0.04), albedo, metallic);
     float NdotV = max(dot(N, V), 0.0);
@@ -58,7 +66,8 @@ vec3 ComputeEnvironmentLighting(vec3 albedo, vec3 normal, vec3 viewDir, float ro
     vec3 kD = (vec3(1.0) - kS) * (1.0 - metallic);
 
     vec3 diffuse = irradiance * albedo;
-    vec3 specular = prefiltered * F;
+    // The authored HDR is not prefiltered yet, so attenuate its sharp reflection by roughness.
+    vec3 specular = prefiltered * F * (1.0 - roughness) * (1.0 - roughness) * metallic;
 
     vec3 ibl = (kD * diffuse * u_Lighting.iblParams.y)
              + (specular * u_Lighting.iblParams.z);

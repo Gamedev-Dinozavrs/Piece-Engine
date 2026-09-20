@@ -52,7 +52,9 @@ Ref<Scene> Scene::Copy(const Ref<Scene>& other) {
     CopyComponent<DirectionalLightComponent>(newScene->m_registry, other->m_registry, entityMap);
     CopyComponent<PointLightComponent>(newScene->m_registry, other->m_registry, entityMap);
     CopyComponent<SpotLightComponent>(newScene->m_registry, other->m_registry, entityMap);
+    CopyComponent<EnvironmentComponent>(newScene->m_registry, other->m_registry, entityMap);
     CopyComponent<CameraComponent>(newScene->m_registry, other->m_registry, entityMap);
+    CopyComponent<AnimatorComponent>(newScene->m_registry, other->m_registry, entityMap);
 
     newScene->m_entityCount = other->m_entityCount;
     return newScene;
