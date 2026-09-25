@@ -3,6 +3,7 @@
 #include <renderer/Buffer.h>
 #include <scene/AnimationSystem.h>
 #include <scene/Components.h>
+#include <utils/platform/WindowsUtils.h>
 
 #include "imgui.h"
 #include <GLFW/glfw3.h>
@@ -18,9 +19,26 @@ namespace Piece
     {
         Scope<RendererContext> s_Context = nullptr;
         std::function<void()> s_SwapChainRecreatedCallback = nullptr;
+        bool s_GameCameraActive = false;
 
         constexpr uint32_t kMaterialFlagHasNormalMap = 1u << 0;
         constexpr uint32_t kMaterialFlagHasEmissiveMap = 1u << 1;
+
+        // Shipped builds carry a "shaders" folder next to the executable; dev builds fall back
+        // to the source-tree path baked in at compile time (PIECE_SHADER_DIR).
+        std::string ResolveShaderDir()
+        {
+            const std::string exeDir = Platform::GetExecutableDirectory();
+            if (!exeDir.empty())
+            {
+                const std::filesystem::path candidate = std::filesystem::path(exeDir) / "shaders";
+                if (std::filesystem::exists(candidate / "textured.vert.spv"))
+                {
+                    return candidate.string();
+                }
+            }
+            return PIECE_SHADER_DIR;
+        }
 
         VkExtent2D GetValidSwapChainExtent(Window *window, Device &device)
         {
@@ -593,18 +611,19 @@ namespace Piece
         }
 
         // Load shaders through the library — loaded once, reused across pipeline recreations.
+        const std::string shaderDir = ResolveShaderDir();
         ctx.shaderLibrary = CreateScope<ShaderLibrary>(*ctx.deviceWrapper);
-        ctx.shaderLibrary->Load("textured.vert", PIECE_SHADER_DIR "/textured.vert.spv", Shader::Stage::Vertex);
-        ctx.shaderLibrary->Load("textured.frag", PIECE_SHADER_DIR "/textured.frag.spv", Shader::Stage::Fragment);
-        ctx.shaderLibrary->Load("lighting_composite.vert", PIECE_SHADER_DIR "/lighting_composite.vert.spv", Shader::Stage::Vertex);
-        ctx.shaderLibrary->Load("lighting_composite.frag", PIECE_SHADER_DIR "/lighting_composite.frag.spv", Shader::Stage::Fragment);
-        ctx.shaderLibrary->Load("lighting_composite_msaa.frag", PIECE_SHADER_DIR "/lighting_composite_msaa.frag.spv", Shader::Stage::Fragment);
-        ctx.shaderLibrary->Load("present.frag", PIECE_SHADER_DIR "/present.frag.spv", Shader::Stage::Fragment);
-        ctx.shaderLibrary->Load("bloom_extract.frag", PIECE_SHADER_DIR "/bloom_extract.frag.spv", Shader::Stage::Fragment);
-        ctx.shaderLibrary->Load("bloom_blur.frag", PIECE_SHADER_DIR "/bloom_blur.frag.spv", Shader::Stage::Fragment);
-        ctx.shaderLibrary->Load("bloom_blur_vertical.frag", PIECE_SHADER_DIR "/bloom_blur_vertical.frag.spv", Shader::Stage::Fragment);
-        ctx.shaderLibrary->Load("billboard.vert", PIECE_SHADER_DIR "/billboard.vert.spv", Shader::Stage::Vertex);
-        ctx.shaderLibrary->Load("billboard.frag", PIECE_SHADER_DIR "/billboard.frag.spv", Shader::Stage::Fragment);
+        ctx.shaderLibrary->Load("textured.vert", shaderDir + "/textured.vert.spv", Shader::Stage::Vertex);
+        ctx.shaderLibrary->Load("textured.frag", shaderDir + "/textured.frag.spv", Shader::Stage::Fragment);
+        ctx.shaderLibrary->Load("lighting_composite.vert", shaderDir + "/lighting_composite.vert.spv", Shader::Stage::Vertex);
+        ctx.shaderLibrary->Load("lighting_composite.frag", shaderDir + "/lighting_composite.frag.spv", Shader::Stage::Fragment);
+        ctx.shaderLibrary->Load("lighting_composite_msaa.frag", shaderDir + "/lighting_composite_msaa.frag.spv", Shader::Stage::Fragment);
+        ctx.shaderLibrary->Load("present.frag", shaderDir + "/present.frag.spv", Shader::Stage::Fragment);
+        ctx.shaderLibrary->Load("bloom_extract.frag", shaderDir + "/bloom_extract.frag.spv", Shader::Stage::Fragment);
+        ctx.shaderLibrary->Load("bloom_blur.frag", shaderDir + "/bloom_blur.frag.spv", Shader::Stage::Fragment);
+        ctx.shaderLibrary->Load("bloom_blur_vertical.frag", shaderDir + "/bloom_blur_vertical.frag.spv", Shader::Stage::Fragment);
+        ctx.shaderLibrary->Load("billboard.vert", shaderDir + "/billboard.vert.spv", Shader::Stage::Vertex);
+        ctx.shaderLibrary->Load("billboard.frag", shaderDir + "/billboard.frag.spv", Shader::Stage::Fragment);
 
         RendererInternals::CreateGraphicsPipeline(ctx);
         // command pool is created by Device; get it
@@ -806,19 +825,39 @@ namespace Piece
 
         if (ctx.camera)
         {
-            if (ImGui::GetCurrentContext() != nullptr)
+            bool gameCameraApplied = false;
+            if (s_GameCameraActive && ctx.scene)
             {
-                ImGuiIO &io = ImGui::GetIO();
-                if (io.WantCaptureMouse || io.WantCaptureKeyboard || io.WantTextInput)
+                Entity primaryCamera = ctx.scene->GetPrimaryCameraEntity();
+                if (primaryCamera && primaryCamera.HasComponent<TransformComponent>())
                 {
-                    if (io.WantCaptureMouse)
-                    {
-                        ctx.camera->cancelMouseInteraction();
-                    }
-                    return;
+                    auto &cameraComponent = primaryCamera.GetComponent<CameraComponent>();
+                    auto &transform = primaryCamera.GetComponent<TransformComponent>();
+                    cameraComponent.camera.setPosition(transform.position);
+                    cameraComponent.camera.setRotation(transform.rotation);
+                    cameraComponent.camera.updateView();
+                    ctx.camera->SetGameCameraPose(cameraComponent.camera.view(), cameraComponent.camera.projection(), transform.position);
+                    gameCameraApplied = true;
                 }
             }
-            ctx.camera->onUpdate(static_cast<float>(ts));
+            ctx.camera->SetGameCameraOverride(gameCameraApplied);
+
+            if (!gameCameraApplied)
+            {
+                if (ImGui::GetCurrentContext() != nullptr)
+                {
+                    ImGuiIO &io = ImGui::GetIO();
+                    if (io.WantCaptureMouse || io.WantCaptureKeyboard || io.WantTextInput)
+                    {
+                        if (io.WantCaptureMouse)
+                        {
+                            ctx.camera->cancelMouseInteraction();
+                        }
+                        return;
+                    }
+                }
+                ctx.camera->onUpdate(static_cast<float>(ts));
+            }
         }
     }
 
@@ -906,6 +945,11 @@ namespace Piece
     {
         PIECE_CORE_ASSERT(s_Context && s_Context->camera, "Renderer camera is not initialized");
         return *s_Context->camera;
+    }
+
+    void Renderer::SetGameCameraActive(bool active)
+    {
+        s_GameCameraActive = active;
     }
 
     Device &Renderer::GetDevice()

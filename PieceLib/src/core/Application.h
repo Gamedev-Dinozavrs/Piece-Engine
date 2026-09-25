@@ -7,6 +7,7 @@
 #include <event/MouseEvent.h>
 #include <layer/Layer.h>
 #include <layer/LayerStack.h>
+#include <scripting/ScriptEngine.h>
 
 namespace Piece {
 	class ImGuiLayer;
@@ -24,6 +25,7 @@ namespace Piece {
 
 		static Application& Get() { return *s_Instance; }
 		ImGuiLayer* GetImGuiLayer() { return m_ImGuiLayer; }
+		ScriptEngine& GetScriptEngine() { return m_ScriptEngine; }
 
 		void Close() { m_IsRunning = false; }
 		inline Window& GetWindow() { return *m_Window; }
@@ -36,6 +38,7 @@ namespace Piece {
 	private:
 		Scope<Window> m_Window;
 		ImGuiLayer* m_ImGuiLayer = nullptr;
+		ScriptEngine m_ScriptEngine;
 
 		bool m_IsRunning = false;
 		bool m_IsMinimized = false;

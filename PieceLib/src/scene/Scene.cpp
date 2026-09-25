@@ -6,6 +6,9 @@
 #include "Components.h"
 #include "Entity.h"
 
+#include <scripting/ScriptComponent.h>
+#include <scripting/ScriptSystem.h>
+
 namespace Piece {
 
 namespace {
@@ -57,13 +60,23 @@ Ref<Scene> Scene::Copy(const Ref<Scene>& other) {
     CopyComponent<EnvironmentComponent>(newScene->m_registry, other->m_registry, entityMap);
     CopyComponent<CameraComponent>(newScene->m_registry, other->m_registry, entityMap);
     CopyComponent<AnimatorComponent>(newScene->m_registry, other->m_registry, entityMap);
+    CopyComponent<ScriptComponent>(newScene->m_registry, other->m_registry, entityMap);
 
     newScene->m_entityCount = other->m_entityCount;
     return newScene;
 }
 
+void Scene::OnRuntimeStart() {
+    ScriptSystem::OnRuntimeStart(*this);
+}
+
 void Scene::OnUpdateRuntime(Timestep timestep) {
     AnimationSystem::Update(*this, timestep);
+    ScriptSystem::OnUpdate(*this, timestep);
+}
+
+void Scene::OnRuntimeStop() {
+    ScriptSystem::OnRuntimeStop(*this);
 }
 
 Entity Scene::CreateEntity(const std::string& name, UUID uuid) {
@@ -123,7 +136,7 @@ void Scene::OnViewportResize(uint32_t width, uint32_t height) {
     for (auto entity : cameraView) {
         auto& cameraComponent = cameraView.get<CameraComponent>(entity);
         if (!cameraComponent.fixedAspectRatio && width > 0 && height > 0) {
-            cameraComponent.camera.setPerspective(70.0f, static_cast<float>(width) / static_cast<float>(height), 0.1f, 100.0f);
+            cameraComponent.camera.setAspectRatio(static_cast<float>(width) / static_cast<float>(height));
             cameraComponent.camera.updateView();
         }
     }

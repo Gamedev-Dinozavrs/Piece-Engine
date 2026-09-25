@@ -44,6 +44,7 @@ private:
     void BeginRenameUploadedTemplate(size_t index);
     void ConfirmRenameUploadedTemplate();
     void BeginRenameMaterial(uint32_t materialId, const std::string& name);
+    void CreateNewScript();
     static std::string NormalizeKey(const std::filesystem::path& path);
 
     std::filesystem::path m_AssetsDirectory;

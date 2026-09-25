@@ -16,6 +16,7 @@ file(GLOB GUI CONFIGURE_DEPENDS "src/GUI/*.cpp" "src/GUI/*.h")
 file(GLOB ASSETS CONFIGURE_DEPENDS "src/assets/*.cpp" "src/assets/*.h")
 file(GLOB_RECURSE RENDERER CONFIGURE_DEPENDS "src/renderer/*.cpp" "src/renderer/*.h")
 file(GLOB SCENE CONFIGURE_DEPENDS "src/scene/*.cpp" "src/scene/*.h")
+file(GLOB SCRIPTING CONFIGURE_DEPENDS "src/scripting/*.cpp" "src/scripting/*.h")
 file(GLOB_RECURSE UTILS CONFIGURE_DEPENDS "src/utils/*.cpp" "src/utils/*.h")
 
 set(CORE_SOURCES
@@ -44,7 +45,7 @@ set_source_files_properties(
     ${CMAKE_SOURCE_DIR}/Dependencies/ufbx/ufbx.c
     PROPERTIES LANGUAGE CXX)
 
-add_library(PieceLib STATIC ${CORE} ${WINDOW} ${EVENT} ${LAYER} ${GUI} ${ASSETS} ${RENDERER} ${SCENE} ${UTILS} ${CORE_SOURCES} ${IMGUI_SOURCES} ${IMGUIZMO_SOURCES} ${CMAKE_SOURCE_DIR}/Dependencies/stb_image/stb_image.cpp ${CMAKE_SOURCE_DIR}/Dependencies/ufbx/ufbx.c)
+add_library(PieceLib STATIC ${CORE} ${WINDOW} ${EVENT} ${LAYER} ${GUI} ${ASSETS} ${RENDERER} ${SCENE} ${SCRIPTING} ${UTILS} ${CORE_SOURCES} ${IMGUI_SOURCES} ${IMGUIZMO_SOURCES} ${CMAKE_SOURCE_DIR}/Dependencies/stb_image/stb_image.cpp ${CMAKE_SOURCE_DIR}/Dependencies/ufbx/ufbx.c)
 
 target_precompile_headers(PieceLib PRIVATE src/PiecePCH.h)
 
@@ -57,6 +58,7 @@ endif()
 target_compile_definitions(PieceLib
     PRIVATE
         PIECE_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/src/shaders"
+        PIECE_MANAGED_SCRIPTS_DIR="${CMAKE_SOURCE_DIR}/Scripts/Piece.ScriptCore/bin"
 )
 
 target_include_directories(PieceLib
@@ -93,4 +95,5 @@ source_group("GUI" FILES ${GUI})
 source_group("Assets" FILES ${ASSETS})
 source_group("Renderer" FILES ${RENDERER})
 source_group("Scene" FILES ${SCENE})
+source_group("Scripting" FILES ${SCRIPTING})
 source_group("Utils" FILES ${UTILS})

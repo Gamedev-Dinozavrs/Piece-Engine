@@ -52,6 +52,17 @@
       "dependsOn": "CMake Build",
       "problemMatcher": [],
       "detail": "Run the main executable"
+    },
+    {
+      "label": "Run Sandbox",
+      "type": "shell",
+      "command": "${workspaceFolder}/build/Sandbox/Debug/Sandbox.exe",
+      "group": {
+        "kind": "build"
+      },
+      "dependsOn": "CMake Build",
+      "problemMatcher": [],
+      "detail": "Run the shipped game project"
     }
   ]
 }

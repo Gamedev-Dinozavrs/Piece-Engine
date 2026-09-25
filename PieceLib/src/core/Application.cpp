@@ -5,9 +5,29 @@
 #include <GUI/ImGuiLayer.h>
 #include <renderer/Renderer.h>
 #include <scene/World.h>
+#include <utils/platform/WindowsUtils.h>
 #include <window/PieceWindowGLFW.h>
 
+#include <filesystem>
+
 namespace Piece {
+
+namespace {
+
+// Shipped builds carry Scripts/Piece.ScriptCore/bin next to the executable; dev builds fall back
+// to the source-tree path baked in at compile time (PIECE_MANAGED_SCRIPTS_DIR).
+std::string ResolveManagedScriptsDir() {
+    const std::string exeDir = Platform::GetExecutableDirectory();
+    if (!exeDir.empty()) {
+        std::filesystem::path candidate = std::filesystem::path(exeDir) / "Scripts" / "Piece.ScriptCore" / "bin";
+        if (std::filesystem::exists(candidate / "Piece.ScriptCore.dll")) {
+            return candidate.string();
+        }
+    }
+    return PIECE_MANAGED_SCRIPTS_DIR;
+}
+
+} // namespace
 
     Application* Application::s_Instance = nullptr;
 
@@ -32,6 +52,10 @@ namespace Piece {
                 m_ImGuiLayer->OnSwapChainRecreated(Renderer::GetRenderPass());
             }
         });
+
+        if (m_ScriptEngine.Initialize(ResolveManagedScriptsDir())) {
+            m_ScriptEngine.Ping();
+        }
     }
 
     Application::~Application() {
@@ -41,6 +65,7 @@ namespace Piece {
         World::ClearScene();
         m_LayerStack.Clear();
         m_ImGuiLayer = nullptr;
+        m_ScriptEngine.Shutdown();
         Renderer::Shutdown();
     }
 

@@ -15,6 +15,7 @@
 #include <cstdio>
 #include <cctype>
 #include <exception>
+#include <fstream>
 #include <unordered_map>
 #include <vector>
 
@@ -289,6 +290,11 @@ void ContentBrowserPanel::DrawAssetToolbar() {
         ImGui::SameLine();
     }
     ImGui::TextUnformatted(breadcrumb.c_str());
+
+    ImGui::SameLine(ImGui::GetContentRegionAvail().x > 140.0f ? ImGui::GetWindowWidth() - 150.0f : 0.0f);
+    if (ImGui::Button("+ New Script")) {
+        CreateNewScript();
+    }
 
     if (!m_StatusMessage.empty()) {
         if (m_StatusIsError) {
@@ -581,6 +587,49 @@ void ContentBrowserPanel::DrawUploadedTemplates() {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
+    }
+}
+
+void ContentBrowserPanel::CreateNewScript() {
+    namespace fs = std::filesystem;
+
+    const fs::path scriptsDir = fs::path("Scripts") / "Piece.ScriptCore" / "src" / "Game";
+    std::error_code error;
+    fs::create_directories(scriptsDir, error);
+
+    std::string className = "NewScript";
+    fs::path scriptPath = scriptsDir / (className + ".cs");
+    for (int suffix = 1; fs::exists(scriptPath); ++suffix) {
+        className = "NewScript" + std::to_string(suffix + 1);
+        scriptPath = scriptsDir / (className + ".cs");
+    }
+
+    std::ofstream file(scriptPath);
+    if (!file.is_open()) {
+        m_StatusMessage = "Failed to create " + scriptPath.string();
+        m_StatusIsError = true;
+        return;
+    }
+
+    file << "using PieceEngine;\n\n"
+         << "public class " << className << " : ScriptBase\n"
+         << "{\n"
+         << "    public override void OnCreate()\n"
+         << "    {\n\n"
+         << "    }\n\n"
+         << "    public override void OnUpdate(float deltaTime)\n"
+         << "    {\n\n"
+         << "    }\n"
+         << "}\n";
+    file.close();
+
+    const fs::path solutionPath = fs::path("Scripts") / "Piece.ScriptCore" / "Piece.ScriptCore.slnx";
+    if (Platform::OpenFileInVisualStudio(solutionPath.string(), scriptPath.string())) {
+        m_StatusMessage = "Created " + className + ".cs and opened it in Visual Studio.";
+        m_StatusIsError = false;
+    } else {
+        m_StatusMessage = "Created " + className + ".cs but could not find Visual Studio to open it.";
+        m_StatusIsError = true;
     }
 }
 

@@ -19,10 +19,20 @@ public:
     void setViewportSize(float width, float height);
     void setPosition(const glm::vec3& position);
 
-    const glm::mat4& projection() const { return m_Projection; }
-    const glm::mat4& view() const { return m_View; }
-    const glm::vec3& position() const { return m_Position; }
+    const glm::mat4& projection() const { return m_GameCameraOverride ? m_GameProjection : m_Projection; }
+    const glm::mat4& view() const { return m_GameCameraOverride ? m_GameView : m_View; }
+    const glm::vec3& position() const { return m_GameCameraOverride ? m_GamePosition : m_Position; }
     const glm::vec3& focalPoint() const { return m_FocalPoint; }
+
+    // Used to preview the scene's primary in-game camera during Play mode instead of the free-fly
+    // editor camera. While active, onUpdate() (mouse/keyboard fly controls) is skipped by the caller.
+    void SetGameCameraOverride(bool enabled) { m_GameCameraOverride = enabled; }
+    bool IsGameCameraOverrideActive() const { return m_GameCameraOverride; }
+    void SetGameCameraPose(const glm::mat4& view, const glm::mat4& projection, const glm::vec3& position) {
+        m_GameView = view;
+        m_GameProjection = projection;
+        m_GamePosition = position;
+    }
 
 private:
     void updateView();
@@ -59,6 +69,11 @@ private:
 
     glm::vec3 m_FocalPoint{0.0f, 0.0f, 0.0f};
     float m_Distance = 4.0f;
+
+    bool m_GameCameraOverride = false;
+    glm::mat4 m_GameView{1.0f};
+    glm::mat4 m_GameProjection{1.0f};
+    glm::vec3 m_GamePosition{0.0f};
 };
 
 } // namespace Piece

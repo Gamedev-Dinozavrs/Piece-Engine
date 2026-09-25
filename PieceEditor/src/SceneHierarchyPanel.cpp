@@ -12,6 +12,7 @@
 #include <scene/Components.h>
 #include <scene/Scene.h>
 #include <scene/World.h>
+#include <scripting/ScriptComponent.h>
 #include <utils/platform/WindowsUtils.h>
 
 #include <cstdio>
@@ -1117,10 +1118,74 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
 
     if (entity.HasComponent<CameraComponent>()) {
         if (ImGui::TreeNodeEx("Camera", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed)) {
-            auto& camera = entity.GetComponent<CameraComponent>();
-            ImGui::Checkbox("Primary", &camera.primary);
-            ImGui::Checkbox("Fixed Aspect", &camera.fixedAspectRatio);
+            auto& cameraComponent = entity.GetComponent<CameraComponent>();
+            auto& camera = cameraComponent.camera;
+            ImGui::Checkbox("Primary", &cameraComponent.primary);
+            ImGui::Checkbox("Fixed Aspect", &cameraComponent.fixedAspectRatio);
+
+            const char* projectionLabels[] = { "Perspective", "Orthographic" };
+            int projectionIndex = static_cast<int>(camera.getProjectionType());
+            if (ImGui::Combo("Projection", &projectionIndex, projectionLabels, 2)) {
+                const float aspect = camera.getAspectRatio();
+                if (projectionIndex == 0) {
+                    camera.setPerspective(camera.getFovY(), aspect, camera.getNearClip(), camera.getFarClip());
+                } else {
+                    camera.setOrthographic(camera.getOrthographicSize(), aspect, camera.getNearClip(), camera.getFarClip());
+                }
+            }
+
+            if (camera.getProjectionType() == ProjectionType::Perspective) {
+                float fovY = camera.getFovY();
+                if (ImGui::DragFloat("Field of View", &fovY, 0.5f, 1.0f, 179.0f)) {
+                    camera.setPerspective(fovY, camera.getAspectRatio(), camera.getNearClip(), camera.getFarClip());
+                }
+            } else {
+                float orthoSize = camera.getOrthographicSize();
+                if (ImGui::DragFloat("Size", &orthoSize, 0.1f, 0.01f, 1000.0f)) {
+                    camera.setOrthographic(orthoSize, camera.getAspectRatio(), camera.getNearClip(), camera.getFarClip());
+                }
+            }
+
+            float nearClip = camera.getNearClip();
+            float farClip = camera.getFarClip();
+            bool clipChanged = ImGui::DragFloat("Near Clip", &nearClip, 0.01f, 0.001f, farClip - 0.01f);
+            clipChanged |= ImGui::DragFloat("Far Clip", &farClip, 1.0f, nearClip + 0.01f, 10000.0f);
+            if (clipChanged) {
+                if (camera.getProjectionType() == ProjectionType::Perspective) {
+                    camera.setPerspective(camera.getFovY(), camera.getAspectRatio(), nearClip, farClip);
+                } else {
+                    camera.setOrthographic(camera.getOrthographicSize(), camera.getAspectRatio(), nearClip, farClip);
+                }
+            }
+
             ImGui::TreePop();
+        }
+    }
+
+    if (entity.HasComponent<ScriptComponent>()) {
+        if (ImGui::TreeNodeEx("Script", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed)) {
+            auto& script = entity.GetComponent<ScriptComponent>();
+
+            char classNameBuffer[256] = {};
+            std::snprintf(classNameBuffer, sizeof(classNameBuffer), "%s", script.className.c_str());
+            if (ImGui::InputText("Class Name", classNameBuffer, sizeof(classNameBuffer))) {
+                script.className = std::string(classNameBuffer);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Fully qualified type name, e.g. PieceEngine.Examples.LogScript");
+            }
+
+            ImGui::Checkbox("Enabled", &script.enabled);
+
+            const bool removeRequested = ImGui::SmallButton("Remove Script Component");
+            ImGui::TreePop();
+            if (removeRequested) {
+                entity.RemoveComponent<ScriptComponent>();
+            }
+        }
+    } else {
+        if (ImGui::Button("Add Script Component")) {
+            entity.AddComponent<ScriptComponent>();
         }
     }
 }

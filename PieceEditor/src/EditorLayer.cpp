@@ -237,6 +237,12 @@ void EditorLayer::OnImGuiRender() {
             }
             ImGui::EndMenu();
         }
+        if (ImGui::BeginMenu("Build")) {
+            if (ImGui::MenuItem("Build Settings...")) {
+                m_BuildSettingsPanel.Open();
+            }
+            ImGui::EndMenu();
+        }
         ImGui::EndMenuBar();
     }
 
@@ -248,6 +254,8 @@ void EditorLayer::OnImGuiRender() {
             ? static_cast<uint32_t>(m_SceneHierarchyPanel.GetSelectedEntity())
             : 0);
     m_ContentBrowserPanel.OnImGuiRender();
+    m_BuildSettingsPanel.OnImGuiRender();
+    m_ConsolePanel.OnImGuiRender();
 
     Renderer::GetEditorCamera().setInputEnabled(!overEditorPanel);
 
@@ -417,6 +425,8 @@ void EditorLayer::StartPlay() {
     m_SceneHierarchyPanel.SetContext(m_RuntimeScene);
     m_SceneHierarchyPanel.SelectEntityByUUID(selectedId);
     m_SceneState = SceneState::Play;
+    m_RuntimeScene->OnRuntimeStart();
+    Renderer::SetGameCameraActive(true);
 }
 
 void EditorLayer::TogglePause() {
@@ -435,6 +445,10 @@ void EditorLayer::StopPlay() {
     Entity selected = m_SceneHierarchyPanel.GetSelectedEntity();
     const UUID selectedId = selected && selected.HasComponent<TagComponent>() ? selected.GetComponent<TagComponent>().id : UUID{0};
     Renderer::WaitIdle();
+    if (m_RuntimeScene) {
+        m_RuntimeScene->OnRuntimeStop();
+    }
+    Renderer::SetGameCameraActive(false);
     World::SetActiveScene(m_EditorScene);
     m_RuntimeScene.reset();
     m_SceneHierarchyPanel.SetContext(m_EditorScene);

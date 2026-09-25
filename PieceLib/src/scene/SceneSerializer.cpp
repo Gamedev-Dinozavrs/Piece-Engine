@@ -12,6 +12,8 @@
 #include <scene/Scene.h>
 #include <scene/World.h>
 
+#include <scripting/ScriptComponent.h>
+
 #include <yaml-cpp/yaml.h>
 
 #include <fstream>
@@ -381,11 +383,17 @@ void SerializeEntity(YAML::Emitter& out, Entity entity) {
     }
 
     if (entity.HasComponent<CameraComponent>()) {
-        const auto& camera = entity.GetComponent<CameraComponent>();
+        const auto& cameraComponent = entity.GetComponent<CameraComponent>();
+        const auto& camera = cameraComponent.camera;
         out << YAML::Key << "CameraComponent";
         out << YAML::BeginMap;
-        out << YAML::Key << "Primary" << YAML::Value << camera.primary;
-        out << YAML::Key << "FixedAspectRatio" << YAML::Value << camera.fixedAspectRatio;
+        out << YAML::Key << "Primary" << YAML::Value << cameraComponent.primary;
+        out << YAML::Key << "FixedAspectRatio" << YAML::Value << cameraComponent.fixedAspectRatio;
+        out << YAML::Key << "ProjectionType" << YAML::Value << static_cast<int>(camera.getProjectionType());
+        out << YAML::Key << "FovY" << YAML::Value << camera.getFovY();
+        out << YAML::Key << "OrthographicSize" << YAML::Value << camera.getOrthographicSize();
+        out << YAML::Key << "NearClip" << YAML::Value << camera.getNearClip();
+        out << YAML::Key << "FarClip" << YAML::Value << camera.getFarClip();
         out << YAML::EndMap;
     }
 
@@ -412,6 +420,16 @@ void SerializeEntity(YAML::Emitter& out, Entity entity) {
 
     if (entity.HasComponent<AnimatorComponent>()) {
         SerializeAnimator(out, entity.GetComponent<AnimatorComponent>());
+    }
+
+    if (entity.HasComponent<ScriptComponent>()) {
+        const auto& script = entity.GetComponent<ScriptComponent>();
+        out << YAML::Key << "ScriptComponent";
+        out << YAML::BeginMap;
+        out << YAML::Key << "AssemblyPath" << YAML::Value << script.assemblyPath;
+        out << YAML::Key << "ClassName" << YAML::Value << script.className;
+        out << YAML::Key << "Enabled" << YAML::Value << script.enabled;
+        out << YAML::EndMap;
     }
 
     if (entity.HasComponent<MaterialComponent>()) {
@@ -578,9 +596,20 @@ bool SceneSerializer::Deserialize(const std::string& filepath) {
             }
 
             if (auto cameraNode = entityNode["CameraComponent"]) {
-                auto& camera = deserializedEntity.AddComponent<CameraComponent>();
-                camera.primary = cameraNode["Primary"].as<bool>(true);
-                camera.fixedAspectRatio = cameraNode["FixedAspectRatio"].as<bool>(false);
+                auto& cameraComponent = deserializedEntity.AddComponent<CameraComponent>();
+                cameraComponent.primary = cameraNode["Primary"].as<bool>(true);
+                cameraComponent.fixedAspectRatio = cameraNode["FixedAspectRatio"].as<bool>(false);
+                const auto projectionType = static_cast<ProjectionType>(cameraNode["ProjectionType"].as<int>(0));
+                const float aspect = cameraComponent.camera.getAspectRatio();
+                const float fovY = cameraNode["FovY"].as<float>(70.0f);
+                const float orthoSize = cameraNode["OrthographicSize"].as<float>(10.0f);
+                const float nearClip = cameraNode["NearClip"].as<float>(0.1f);
+                const float farClip = cameraNode["FarClip"].as<float>(100.0f);
+                if (projectionType == ProjectionType::Orthographic) {
+                    cameraComponent.camera.setOrthographic(orthoSize, aspect, nearClip, farClip);
+                } else {
+                    cameraComponent.camera.setPerspective(fovY, aspect, nearClip, farClip);
+                }
             }
 
             std::string importedSourcePath;
@@ -630,6 +659,13 @@ bool SceneSerializer::Deserialize(const std::string& filepath) {
                     ? deserializedEntity.GetComponent<AnimatorComponent>()
                     : deserializedEntity.AddComponent<AnimatorComponent>();
                 DeserializeAnimator(animatorNode, animator);
+            }
+
+            if (auto scriptNode = entityNode["ScriptComponent"]) {
+                auto& script = deserializedEntity.AddComponent<ScriptComponent>();
+                script.assemblyPath = scriptNode["AssemblyPath"].as<std::string>("");
+                script.className = scriptNode["ClassName"].as<std::string>("");
+                script.enabled = scriptNode["Enabled"].as<bool>(true);
             }
 
             if (auto materialNode = entityNode["MaterialComponent"]) {

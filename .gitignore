@@ -33,5 +33,6 @@ build/
 **/build/
 **/PieceLib/src/core/vc140.pdb      
 *.spv
+.piece_build_settings
 
 PieceEditor/assets/*

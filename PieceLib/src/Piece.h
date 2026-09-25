@@ -3,6 +3,7 @@
 // Core
 #include <core/BackgroundService.h>
 #include <core/Core.h>
+#include <core/EditorConsoleSink.h>
 #include <core/Input.h>
 #include <core/KeyCodes.h>
 #include <core/Log.h>
@@ -57,6 +58,10 @@
 #include <scene/RenderObject.h>
 #include <scene/Scene.h>
 #include <scene/World.h>
+
+// Scripting
+#include <scripting/ScriptComponent.h>
+#include <scripting/ScriptEngine.h>
 
 // Extended GLM
 #include <glm/gtc/matrix_transform.hpp>

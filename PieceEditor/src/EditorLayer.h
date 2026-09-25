@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BuildSettingsPanel.h"
+#include "ConsolePanel.h"
 #include "ContentBrowserPanel.h"
 #include "SceneHierarchyPanel.h"
 
@@ -74,6 +76,8 @@ private:
     std::string m_CurrentScenePath;
     ContentBrowserPanel m_ContentBrowserPanel;
     SceneHierarchyPanel m_SceneHierarchyPanel;
+    BuildSettingsPanel m_BuildSettingsPanel;
+    ConsolePanel m_ConsolePanel;
 };
 
 } // namespace Piece

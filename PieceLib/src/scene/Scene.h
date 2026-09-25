@@ -21,7 +21,9 @@ public:
     ~Scene() = default;
 
     static Ref<Scene> Copy(const Ref<Scene>& other);
+    void OnRuntimeStart();
     void OnUpdateRuntime(Timestep timestep);
+    void OnRuntimeStop();
 
     Entity CreateEntity(const std::string& name = "Entity", UUID uuid = UUID{});
     void DestroyEntity(Entity entity);

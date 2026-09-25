@@ -97,6 +97,11 @@ Ref<Scene> EnsureScene() {
         s_ActiveScene = CreateRef<Scene>();
         Entity light = s_ActiveScene->CreateEntity("Directional Light");
         light.AddComponent<DirectionalLightComponent>();
+
+        Entity camera = s_ActiveScene->CreateEntity("Main Camera");
+        camera.GetComponent<TransformComponent>().position = {0.0f, 2.0f, 6.0f};
+        camera.GetComponent<TransformComponent>().rotation = {-10.0f, 0.0f, 0.0f};
+        camera.AddComponent<CameraComponent>();
     }
     return s_ActiveScene;
 }

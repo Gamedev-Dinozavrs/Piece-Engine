@@ -26,6 +26,9 @@ namespace Piece {
         static bool OnMouseScrolled(MouseScrolledEvent& event);
         static UUID ReadEntityIdAtPixel(uint32_t x, uint32_t y);
         static EditorCamera& GetEditorCamera();
+        // When active, the viewport renders from the active scene's primary CameraComponent instead
+        // of the free-fly editor camera (falls back to the editor camera if no primary camera exists).
+        static void SetGameCameraActive(bool active);
 
         static Device& GetDevice();
         static RenderPass& GetRenderPass();
