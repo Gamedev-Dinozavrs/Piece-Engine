@@ -229,8 +229,9 @@ bool ScriptEngine::Initialize(const std::string& managedAssemblyDir) {
     m_CreateEntityScriptFn = GetManagedFunctionPointer(bridgeType, "CreateEntityScript");
     m_UpdateEntityScriptFn = GetManagedFunctionPointer(bridgeType, "UpdateEntityScript");
     m_DestroyEntityScriptFn = GetManagedFunctionPointer(bridgeType, "DestroyEntityScript");
+    m_LoadGameScriptsFn = GetManagedFunctionPointer(bridgeType, "LoadGameScripts");
 
-    if (!m_PingFn || !m_CreateEntityScriptFn || !m_UpdateEntityScriptFn || !m_DestroyEntityScriptFn) {
+    if (!m_PingFn || !m_CreateEntityScriptFn || !m_UpdateEntityScriptFn || !m_DestroyEntityScriptFn || !m_LoadGameScriptsFn) {
         PIECE_CORE_ERROR("Failed to resolve one or more NativeBridge methods.");
         return false;
     }
@@ -241,6 +242,15 @@ bool ScriptEngine::Initialize(const std::string& managedAssemblyDir) {
 
     m_Initialized = true;
     PIECE_CORE_INFO("Script runtime initialized from '{}'.", managedAssemblyDir);
+
+    // Load any already-built game scripts (e.g. from a previous editor session) so they're usable
+    // without forcing an immediate recompile.
+    const fs::path gameScriptsDll = fs::path(managedAssemblyDir).parent_path().parent_path()
+        / "Piece.GameScripts" / "bin" / "Piece.GameScripts.dll";
+    if (fs::exists(gameScriptsDll)) {
+        LoadGameScripts(gameScriptsDll.string());
+    }
+
     return true;
 }
 
@@ -263,6 +273,7 @@ void ScriptEngine::Shutdown() {
     m_CreateEntityScriptFn = nullptr;
     m_UpdateEntityScriptFn = nullptr;
     m_DestroyEntityScriptFn = nullptr;
+    m_LoadGameScriptsFn = nullptr;
     m_Initialized = false;
 }
 
@@ -303,6 +314,15 @@ void ScriptEngine::DestroyEntityScript(uint64_t entityId) {
     }
 
     reinterpret_cast<void(CORECLR_DELEGATE_CALLTYPE*)(int64_t)>(m_DestroyEntityScriptFn)(static_cast<int64_t>(entityId));
+}
+
+void ScriptEngine::LoadGameScripts(const std::string& assemblyPath) {
+    if (!m_Initialized || !m_LoadGameScriptsFn) {
+        return;
+    }
+
+    const std::wstring widePath = ToWideString(assemblyPath);
+    reinterpret_cast<void(CORECLR_DELEGATE_CALLTYPE*)(const wchar_t*)>(m_LoadGameScriptsFn)(widePath.c_str());
 }
 
 } // namespace Piece

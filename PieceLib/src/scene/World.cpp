@@ -256,6 +256,10 @@ Ref<Scene> GetActiveScene() {
     return s_ActiveScene;
 }
 
+Ref<Scene> EnsureActiveScene() {
+    return EnsureScene();
+}
+
 void SetActiveScene(const Ref<Scene>& scene) {
     s_ActiveScene = scene;
 }
@@ -345,6 +349,40 @@ uint32_t CreateEnvironmentObject(const std::string& name) {
 
     entity = scene->CreateEntity(name.empty() ? "Environment" : name);
     entity.AddComponent<EnvironmentComponent>();
+    return static_cast<uint32_t>(entity);
+}
+
+uint32_t CreateCameraObject(const SpawnTransform& transform, const std::string& name, bool makePrimary) {
+    // If the scene doesn't exist yet, EnsureScene() below will auto-populate it with its own default
+    // "Main Camera" - creating another camera on top of that would leave two redundant camera objects.
+    const bool sceneAlreadyExisted = static_cast<bool>(s_ActiveScene);
+    Ref<Scene> scene = EnsureScene();
+
+    if (!sceneAlreadyExisted) {
+        Entity defaultCamera = scene->GetPrimaryCameraEntity();
+        if (defaultCamera) {
+            return static_cast<uint32_t>(defaultCamera);
+        }
+    }
+
+    Entity entity = scene->CreateEntity(name.empty() ? "Camera" : name);
+    auto& transformComponent = entity.GetComponent<TransformComponent>();
+    transformComponent.position = transform.position;
+    transformComponent.rotation = transform.rotation;
+    transformComponent.scale = transform.scale;
+    auto& cameraComponent = entity.AddComponent<CameraComponent>();
+    cameraComponent.primary = makePrimary;
+
+    if (makePrimary) {
+        auto view = scene->GetAllEntitiesViewWith<CameraComponent>();
+        for (auto handle : view) {
+            if (handle == static_cast<entt::entity>(entity)) {
+                continue;
+            }
+            view.get<CameraComponent>(handle).primary = false;
+        }
+    }
+
     return static_cast<uint32_t>(entity);
 }
 

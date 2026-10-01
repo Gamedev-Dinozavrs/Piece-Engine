@@ -1,6 +1,7 @@
 #include "SceneHierarchyPanel.h"
 
 #include "EditorPlacement.h"
+#include "ScriptUtils.h"
 
 #include "imgui.h"
 #include "imgui_internal.h"
@@ -1120,7 +1121,17 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
         if (ImGui::TreeNodeEx("Camera", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed)) {
             auto& cameraComponent = entity.GetComponent<CameraComponent>();
             auto& camera = cameraComponent.camera;
-            ImGui::Checkbox("Primary", &cameraComponent.primary);
+            if (ImGui::Checkbox("Primary", &cameraComponent.primary)) {
+                if (cameraComponent.primary && m_Context) {
+                    auto cameraView = m_Context->GetAllEntitiesViewWith<CameraComponent>();
+                    for (auto handle : cameraView) {
+                        if (handle == static_cast<entt::entity>(entity)) {
+                            continue;
+                        }
+                        cameraView.get<CameraComponent>(handle).primary = false;
+                    }
+                }
+            }
             ImGui::Checkbox("Fixed Aspect", &cameraComponent.fixedAspectRatio);
 
             const char* projectionLabels[] = { "Perspective", "Orthographic" };
@@ -1166,16 +1177,94 @@ void SceneHierarchyPanel::DrawProperties(Entity entity) {
         if (ImGui::TreeNodeEx("Script", ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_Framed)) {
             auto& script = entity.GetComponent<ScriptComponent>();
 
-            char classNameBuffer[256] = {};
-            std::snprintf(classNameBuffer, sizeof(classNameBuffer), "%s", script.className.c_str());
-            if (ImGui::InputText("Class Name", classNameBuffer, sizeof(classNameBuffer))) {
-                script.className = std::string(classNameBuffer);
+            const std::filesystem::path existingScriptPath = ScriptUtils::FindScriptFile(script.className);
+            const bool hasScript = !existingScriptPath.empty();
+            const bool isDangling = !script.className.empty() && !hasScript;
+
+            auto attachScript = [this, &script](const std::filesystem::path& scriptPath) {
+                script.className = ScriptUtils::GetClassNameFromScriptFile(scriptPath);
+                m_ObjStatusMessage = "Attached " + script.className + ".";
+                m_ObjStatusIsError = false;
+                ScriptUtils::RecompileAndReloadGameScripts([this](bool success, std::string message) {
+                    m_ObjStatusMessage = message;
+                    m_ObjStatusIsError = !success;
+                });
+            };
+
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextUnformatted("Script");
+            ImGui::SameLine(80.0f);
+
+            const float actionButtonWidth = 48.0f;
+            const float fieldWidth = ImGui::GetContentRegionAvail().x - actionButtonWidth - ImGui::GetStyle().ItemSpacing.x;
+
+            if (isDangling) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.9f, 0.45f, 0.4f, 1.0f));
+            } else if (!hasScript) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+            }
+            // Display the script FILE's name (matches the Content Browser tile), not the raw
+            // className - a script's class and its filename don't have to match (e.g. a manually
+            // renamed file), and showing the file name is what the user actually dragged in.
+            const std::string slotLabel = hasScript ? existingScriptPath.stem().string() : isDangling ? script.className : "None";
+            ImGui::Button(slotLabel.c_str(), ImVec2(fieldWidth, 0.0f));
+            if (isDangling || !hasScript) {
+                ImGui::PopStyleColor();
+            }
+            if (hasScript && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                ScriptUtils::OpenScriptInVisualStudio(existingScriptPath);
             }
             if (ImGui::IsItemHovered()) {
-                ImGui::SetTooltip("Fully qualified type name, e.g. PieceEngine.Examples.LogScript");
+                if (hasScript) {
+                    ImGui::SetTooltip("Class: %s\nDouble-click to open in Visual Studio", script.className.c_str());
+                } else if (isDangling) {
+                    ImGui::SetTooltip("No .cs file found for this class");
+                } else {
+                    ImGui::SetTooltip("Drag a script (.cs) here from the Content Browser");
+                }
+            }
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("SCRIPT_ASSET")) {
+                    attachScript(std::string(static_cast<const char*>(payload->Data)));
+                }
+                ImGui::EndDragDropTarget();
+            }
+
+            ImGui::SameLine();
+            if (hasScript || isDangling) {
+                if (ImGui::Button("x", ImVec2(actionButtonWidth, 0.0f))) {
+                    script.className.clear();
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Detach script");
+                }
+            } else if (ImGui::Button("New", ImVec2(actionButtonWidth, 0.0f))) {
+                const std::string tag = entity.HasComponent<TagComponent>() ? entity.GetComponent<TagComponent>().tag : std::string("Entity");
+                std::filesystem::path scriptPath;
+                const std::string className = ScriptUtils::CreateScriptFile(tag + "Script", scriptPath);
+                if (className.empty()) {
+                    m_ObjStatusMessage = "Failed to create new script file.";
+                    m_ObjStatusIsError = true;
+                    PIECE_CORE_ERROR("Failed to create new script file.");
+                } else {
+                    script.className = className;
+                    ScriptUtils::OpenScriptInVisualStudio(scriptPath);
+                    m_ObjStatusMessage = "Created " + className + ".cs.";
+                    m_ObjStatusIsError = false;
+                    ScriptUtils::RecompileAndReloadGameScripts([this](bool success, std::string message) {
+                        m_ObjStatusMessage = message;
+                        m_ObjStatusIsError = !success;
+                    });
+                }
             }
 
             ImGui::Checkbox("Enabled", &script.enabled);
+
+            if (!m_ObjStatusMessage.empty()) {
+                ImGui::TextColored(
+                    m_ObjStatusIsError ? ImVec4(0.95f, 0.3f, 0.3f, 1.0f) : ImVec4(0.3f, 0.9f, 0.4f, 1.0f),
+                    "%s", m_ObjStatusMessage.c_str());
+            }
 
             const bool removeRequested = ImGui::SmallButton("Remove Script Component");
             ImGui::TreePop();

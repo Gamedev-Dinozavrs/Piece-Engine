@@ -28,6 +28,11 @@ public:
     void UpdateEntityScript(uint64_t entityId, float deltaTime);
     void DestroyEntityScript(uint64_t entityId);
 
+    // Loads (or hot-reloads) the user game-scripts assembly into a fresh collectible
+    // AssemblyLoadContext on the managed side, so newly compiled script code can be picked up
+    // without restarting the process. No-op if the file doesn't exist.
+    void LoadGameScripts(const std::string& assemblyPath);
+
 private:
     bool LoadHostFxr();
     bool LoadRuntimeDelegate(const std::string& runtimeConfigPath);
@@ -45,6 +50,7 @@ private:
     void* m_CreateEntityScriptFn = nullptr;
     void* m_UpdateEntityScriptFn = nullptr;
     void* m_DestroyEntityScriptFn = nullptr;
+    void* m_LoadGameScriptsFn = nullptr;
 
     bool m_Initialized = false;
     std::string m_ManagedAssemblyDir;

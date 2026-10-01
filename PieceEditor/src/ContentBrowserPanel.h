@@ -45,9 +45,16 @@ private:
     void ConfirmRenameUploadedTemplate();
     void BeginRenameMaterial(uint32_t materialId, const std::string& name);
     void CreateNewScript();
+    void OpenAssetPath(const std::filesystem::path& path);
+    void DrawAssetContextMenu(const std::filesystem::path& path);
+    void BeginRenameAssetPath(const std::filesystem::path& path);
+    void ConfirmRenameAssetPath();
+    void DeleteAssetPath(const std::filesystem::path& path);
+    const std::filesystem::path& GetCurrentRootDirectory() const;
     static std::string NormalizeKey(const std::filesystem::path& path);
 
     std::filesystem::path m_AssetsDirectory;
+    std::filesystem::path m_ScriptsDirectory;
     std::filesystem::path m_CurrentDirectory;
     std::unordered_map<std::string, std::vector<uint32_t>> m_LoadedAssetEntities;
     std::string m_StatusMessage;
@@ -62,6 +69,11 @@ private:
     char m_RenameMaterialBuffer[128] = {};
     bool m_OpenRenameMaterialPopup = false;
     std::filesystem::path m_SelectedAssetPath;
+    std::filesystem::path m_RenameAssetPath;
+    char m_RenameAssetBuffer[256] = {};
+    bool m_OpenRenameAssetPopup = false;
+    std::filesystem::path m_DeleteAssetPath;
+    bool m_OpenDeleteAssetConfirmPopup = false;
     bool m_MaterialAssetsLoaded = false;
     uint32_t m_AnimationTargetId = 0;
     std::function<void(const std::filesystem::path&)> m_ModelSpawnCallback;

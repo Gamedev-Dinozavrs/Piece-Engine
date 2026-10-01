@@ -51,6 +51,22 @@ public static class NativeBridge
     }
 
     [UnmanagedCallersOnly]
+    public static void LoadGameScripts(IntPtr assemblyPathPtr)
+    {
+        try {
+            string? path = Marshal.PtrToStringUni(assemblyPathPtr);
+            if (string.IsNullOrEmpty(path)) {
+                return;
+            }
+
+            ScriptRegistry.LoadGameScripts(path);
+            Console.WriteLine($"[Piece.ScriptCore] Loaded game scripts from '{path}'.");
+        } catch (Exception exception) {
+            Console.Error.WriteLine($"[Piece.ScriptCore] LoadGameScripts failed: {exception}");
+        }
+    }
+
+    [UnmanagedCallersOnly]
     public static unsafe void RegisterEngineCallbacks(
         delegate* unmanaged<long, float*, float*, float*, void> getPosition,
         delegate* unmanaged<long, float, float, float, void> setPosition,

@@ -1,5 +1,6 @@
 #include "EditorLayer.h"
 
+#include "ScriptUtils.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 #include "backends/imgui_impl_vulkan.h"
@@ -49,8 +50,9 @@ EditorLayer::~EditorLayer() {
 }
 
 void EditorLayer::OnAttach() {
-    m_EditorScene = World::GetActiveScene();
+    m_EditorScene = World::EnsureActiveScene();
     m_SceneHierarchyPanel.SetContext(m_EditorScene);
+
     m_ContentBrowserPanel.SetModelSpawnCallback([this](const std::filesystem::path& path) {
         m_SceneHierarchyPanel.SpawnModelFromPath(path);
     });
@@ -241,6 +243,15 @@ void EditorLayer::OnImGuiRender() {
             if (ImGui::MenuItem("Build Settings...")) {
                 m_BuildSettingsPanel.Open();
             }
+            if (ImGui::MenuItem("Recompile Scripts")) {
+                ScriptUtils::RecompileAndReloadGameScripts([](bool success, std::string message) {
+                    if (success) {
+                        PIECE_CORE_INFO("{}", message);
+                    } else {
+                        PIECE_CORE_ERROR("{}", message);
+                    }
+                });
+            }
             ImGui::EndMenu();
         }
         ImGui::EndMenuBar();
@@ -407,6 +418,13 @@ void EditorLayer::StartPlay() {
         return;
     }
 
+    std::string recompileMessage;
+    if (!ScriptUtils::RecompileAndReloadGameScriptsBlocking(recompileMessage)) {
+        PIECE_CORE_ERROR("{}", recompileMessage);
+    } else {
+        PIECE_CORE_INFO("{}", recompileMessage);
+    }
+
     Entity selected = m_SceneHierarchyPanel.GetSelectedEntity();
     const UUID selectedId = selected && selected.HasComponent<TagComponent>() ? selected.GetComponent<TagComponent>().id : UUID{0};
     m_RuntimeScene = Scene::Copy(m_EditorScene);
@@ -426,6 +444,15 @@ void EditorLayer::StartPlay() {
     m_SceneHierarchyPanel.SelectEntityByUUID(selectedId);
     m_SceneState = SceneState::Play;
     m_RuntimeScene->OnRuntimeStart();
+
+    if (!m_RuntimeScene->GetPrimaryCameraEntity()) {
+        PIECE_CORE_WARN("No primary camera found in the scene; Play mode is using a temporary fallback camera. Add a Camera via Create > Camera and mark it Primary.");
+        const EditorCamera& editorCamera = Renderer::GetEditorCamera();
+        Entity fallbackCamera = m_RuntimeScene->CreateEntity("Fallback Camera (temporary)");
+        fallbackCamera.GetComponent<TransformComponent>().position = editorCamera.position();
+        fallbackCamera.AddComponent<CameraComponent>();
+    }
+
     Renderer::SetGameCameraActive(true);
 }
 
@@ -503,7 +530,7 @@ void EditorLayer::NewScene() {
     Renderer::WaitIdle();
     World::ClearScene();
     m_CurrentScenePath.clear();
-    m_EditorScene = World::GetActiveScene();
+    m_EditorScene = World::EnsureActiveScene();
     m_TransformHistory.clear();
     m_TransformHistoryCursor = 0;
     m_SceneHierarchyPanel.SetContext(m_EditorScene);

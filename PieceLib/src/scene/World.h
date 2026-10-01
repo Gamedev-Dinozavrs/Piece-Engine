@@ -104,6 +104,9 @@ struct RenderEntityView {
 namespace World {
 
 Ref<Scene> GetActiveScene();
+// Returns the active scene, lazily creating one (with the default Main Camera + Directional Light)
+// if none exists yet. Unlike GetActiveScene(), this never returns null.
+Ref<Scene> EnsureActiveScene();
 void SetActiveScene(const Ref<Scene>& scene);
 
 uint32_t SpawnPrimitive(PrimitiveType primitiveType, const SpawnTransform& transform, const std::string& name = "");
@@ -113,6 +116,9 @@ uint32_t SpawnSphere(const SpawnTransform& transform);
 uint32_t SpawnMesh(const Ref<Mesh>& mesh, const SpawnTransform& transform, const std::string& name = "Imported Mesh", bool hasVertexNormals = true);
 uint32_t CreateEmptyObject(const std::string& name = "Empty Object");
 uint32_t CreateEnvironmentObject(const std::string& name = "Environment");
+// Creates a camera entity. If makePrimary is true (default), unsets "primary" on every other
+// camera in the scene so exactly one camera drives Play mode's view.
+uint32_t CreateCameraObject(const SpawnTransform& transform, const std::string& name = "Camera", bool makePrimary = true);
 bool SetEntityParent(uint32_t childEntityId, uint32_t parentEntityId);
 bool DestroyEntity(uint32_t entityId);
 

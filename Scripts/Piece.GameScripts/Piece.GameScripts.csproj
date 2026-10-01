@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>Piece.GameScripts</AssemblyName>
+    <!-- Stable output path so the native host can find the assembly regardless of build configuration. -->
+    <OutputPath>bin\</OutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Compile-only reference: Piece.ScriptCore is already loaded in the host process, so its DLL
+         must not be copied alongside this one (that would duplicate/shadow the already-loaded types). -->
+    <ProjectReference Include="..\Piece.ScriptCore\Piece.ScriptCore.csproj">
+      <Private>false</Private>
+      <ExcludeAssets>runtime</ExcludeAssets>
+    </ProjectReference>
+  </ItemGroup>
+</Project>

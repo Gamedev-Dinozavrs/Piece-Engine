@@ -150,6 +150,15 @@ void BuildSettingsPanel::CopyPackagedFiles() {
             m_BuildLog += "\nCopied managed scripts";
         }
 
+        const fs::path gameScriptsSource = fs::path("Scripts") / "Piece.GameScripts" / "bin";
+        if (fs::exists(gameScriptsSource)) {
+            const fs::path gameScriptsDest = outputDir / "Scripts" / "Piece.GameScripts" / "bin";
+            fs::create_directories(gameScriptsDest);
+            fs::copy(gameScriptsSource, gameScriptsDest,
+                fs::copy_options::overwrite_existing | fs::copy_options::recursive);
+            m_BuildLog += "\nCopied game scripts";
+        }
+
         const fs::path shaderSource = fs::path("PieceLib") / "src" / "shaders";
         if (fs::exists(shaderSource)) {
             const fs::path shaderDest = outputDir / "shaders";

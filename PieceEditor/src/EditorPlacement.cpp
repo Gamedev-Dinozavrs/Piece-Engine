@@ -2,6 +2,7 @@
 
 #include <imgui.h>
 #include <renderer/Renderer.h>
+#include <scene/EditorCamera.h>
 #include <scene/World.h>
 
 namespace Piece {
@@ -25,6 +26,11 @@ bool DrawCreateMenu() {
         }
         if (ImGui::MenuItem("Empty Object")) {
             World::CreateEmptyObject("Entity");
+            created = true;
+        }
+        if (ImGui::MenuItem("Camera")) {
+            const glm::vec3 spawnPosition = Renderer::GetEditorCamera().focalPoint();
+            World::CreateCameraObject(SpawnTransform{spawnPosition, glm::vec3(0.0f), glm::vec3(1.0f)});
             created = true;
         }
         if (ImGui::MenuItem("Point Light")) {

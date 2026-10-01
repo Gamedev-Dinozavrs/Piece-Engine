@@ -1,6 +1,7 @@
 #include "ContentBrowserPanel.h"
 
 #include "EditorPlacement.h"
+#include "ScriptUtils.h"
 
 #include "imgui.h"
 
@@ -95,6 +96,7 @@ enum class AssetTileKind {
     Scene,
     Texture,
     Animation,
+    Script,
     Folder
 };
 
@@ -120,6 +122,9 @@ AssetTileKind GetAssetTileKind(const std::filesystem::path& path) {
     if (ext == ".anim" || ext == ".animation") {
         return AssetTileKind::Animation;
     }
+    if (ext == ".cs") {
+        return AssetTileKind::Script;
+    }
     return AssetTileKind::Model;
 }
 
@@ -131,6 +136,7 @@ void DrawAssetTileIcon(ImDrawList* drawList, const ImVec2& min, const ImVec2& ma
         : kind == AssetTileKind::Scene ? IM_COL32(255, 167, 77, 255)
         : kind == AssetTileKind::Texture ? IM_COL32(201, 91, 31, 255)
         : kind == AssetTileKind::Animation ? IM_COL32(247, 128, 45, 255)
+        : kind == AssetTileKind::Script ? IM_COL32(86, 182, 194, 255)
         : IM_COL32(230, 151, 72, 255);
     drawList->AddRectFilled(min, max, background, 4.0f);
     drawList->AddRect(min, max, outline, 4.0f, 0, selected ? 2.0f : 1.0f);
@@ -162,6 +168,11 @@ void DrawAssetTileIcon(ImDrawList* drawList, const ImVec2& min, const ImVec2& ma
     } else if (kind == AssetTileKind::Animation) {
         drawList->AddCircleFilled(center, 15.0f, accent);
         drawList->AddTriangleFilled(ImVec2(center.x - 4.0f, center.y - 8.0f), ImVec2(center.x - 4.0f, center.y + 8.0f), ImVec2(center.x + 9.0f, center.y), IM_COL32(255, 240, 255, 230));
+    } else if (kind == AssetTileKind::Script) {
+        const ImVec2 pageMin(center.x - 15.0f, center.y - 18.0f);
+        const ImVec2 pageMax(center.x + 15.0f, center.y + 18.0f);
+        drawList->AddRectFilled(pageMin, pageMax, accent, 3.0f);
+        drawList->AddText(ImVec2(center.x - 11.0f, center.y - 9.0f), IM_COL32(18, 27, 39, 255), "</>");
     } else {
         drawList->AddRectFilled(ImVec2(center.x - 19.0f, center.y - 12.0f), ImVec2(center.x + 19.0f, center.y + 14.0f), accent, 3.0f);
         drawList->AddRectFilled(ImVec2(center.x - 15.0f, center.y - 17.0f), ImVec2(center.x - 1.0f, center.y - 10.0f), accent, 2.0f);
@@ -182,11 +193,28 @@ void DrawAssetTile(const char* id, const std::string& label, AssetTileKind kind,
 } // namespace
 
 ContentBrowserPanel::ContentBrowserPanel()
-    : m_AssetsDirectory(ResolveWorkspaceRoot() / "PieceEditor" / "assets"), m_CurrentDirectory(m_AssetsDirectory) {
+    : m_AssetsDirectory(ResolveWorkspaceRoot() / "PieceEditor" / "assets")
+    , m_ScriptsDirectory(ResolveWorkspaceRoot() / "Scripts" / "Piece.GameScripts" / "src")
+    , m_CurrentDirectory(m_AssetsDirectory) {
     if (!std::filesystem::exists(m_AssetsDirectory)) {
         std::filesystem::create_directories(m_AssetsDirectory);
     }
+    if (!std::filesystem::exists(m_ScriptsDirectory)) {
+        std::filesystem::create_directories(m_ScriptsDirectory);
+    }
     LoadMaterialAssets();
+}
+
+const std::filesystem::path& ContentBrowserPanel::GetCurrentRootDirectory() const {
+    std::error_code error;
+    const std::filesystem::path relative = std::filesystem::relative(m_CurrentDirectory, m_ScriptsDirectory, error);
+    if (!error) {
+        const std::string relativeStr = relative.generic_string();
+        if (relativeStr == "." || relativeStr.rfind("..", 0) != 0) {
+            return m_ScriptsDirectory;
+        }
+    }
+    return m_AssetsDirectory;
 }
 
 void ContentBrowserPanel::OnImGuiRender() {
@@ -205,6 +233,7 @@ void ContentBrowserPanel::OnImGuiRender() {
     ImGui::TextUnformatted("Folders");
     ImGui::Separator();
     DrawDirectoryTree(m_AssetsDirectory);
+    DrawDirectoryTree(m_ScriptsDirectory);
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("##AssetContents", ImVec2(0.0f, 0.0f), ImGuiChildFlags_Borders);
@@ -274,19 +303,58 @@ void ContentBrowserPanel::OnImGuiRender() {
         ImGui::EndPopup();
     }
 
+    if (m_OpenRenameAssetPopup) {
+        ImGui::OpenPopup("Rename Asset");
+        m_OpenRenameAssetPopup = false;
+    }
+    if (ImGui::BeginPopupModal("Rename Asset", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::InputText("Name", m_RenameAssetBuffer, sizeof(m_RenameAssetBuffer));
+        if (ImGui::Button("Rename")) {
+            ConfirmRenameAssetPath();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) {
+            m_RenameAssetPath.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    if (m_OpenDeleteAssetConfirmPopup) {
+        ImGui::OpenPopup("Delete Asset");
+        m_OpenDeleteAssetConfirmPopup = false;
+    }
+    if (ImGui::BeginPopupModal("Delete Asset", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::Text("Delete '%s'? This cannot be undone.", m_DeleteAssetPath.filename().string().c_str());
+        if (ImGui::Button("Delete")) {
+            DeleteAssetPath(m_DeleteAssetPath);
+            m_DeleteAssetPath.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel")) {
+            m_DeleteAssetPath.clear();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
     ImGui::End();
 }
 
 void ContentBrowserPanel::DrawAssetToolbar() {
+    const std::filesystem::path& root = GetCurrentRootDirectory();
+    const std::string rootLabel = root == m_ScriptsDirectory ? "Scripts" : "Assets";
     std::error_code relativeError;
-    const std::filesystem::path relative = std::filesystem::relative(m_CurrentDirectory, m_AssetsDirectory, relativeError);
+    const std::filesystem::path relative = std::filesystem::relative(m_CurrentDirectory, root, relativeError);
     const std::string breadcrumb = relativeError || relative.empty() || relative == "."
-        ? "Assets"
-        : "Assets / " + relative.generic_string();
-    if (m_CurrentDirectory != m_AssetsDirectory && ImGui::SmallButton("Up##AssetDirectory")) {
+        ? rootLabel
+        : rootLabel + " / " + relative.generic_string();
+    if (m_CurrentDirectory != root && ImGui::SmallButton("Up##AssetDirectory")) {
         m_CurrentDirectory = m_CurrentDirectory.parent_path();
     }
-    if (m_CurrentDirectory != m_AssetsDirectory) {
+    if (m_CurrentDirectory != root) {
         ImGui::SameLine();
     }
     ImGui::TextUnformatted(breadcrumb.c_str());
@@ -323,8 +391,11 @@ void ContentBrowserPanel::DrawDirectoryTree(const std::filesystem::path& directo
     ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
     if (selected) flags |= ImGuiTreeNodeFlags_Selected;
     if (children.empty()) flags |= ImGuiTreeNodeFlags_Leaf;
-    if (directory == m_AssetsDirectory) flags |= ImGuiTreeNodeFlags_DefaultOpen;
-    const std::string label = directory == m_AssetsDirectory ? "Assets" : directory.filename().string();
+    const bool isRoot = directory == m_AssetsDirectory || directory == m_ScriptsDirectory;
+    if (isRoot) flags |= ImGuiTreeNodeFlags_DefaultOpen;
+    const std::string label = directory == m_AssetsDirectory ? "Assets"
+        : directory == m_ScriptsDirectory ? "Scripts"
+        : directory.filename().string();
     const bool open = ImGui::TreeNodeEx(directory.string().c_str(), flags, "%s", label.c_str());
     if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen()) {
         m_CurrentDirectory = directory;
@@ -370,18 +441,10 @@ void ContentBrowserPanel::DrawFilesystemAssets() {
         if (ImGui::IsItemClicked()) {
             m_SelectedAssetPath = path;
             if (ImGui::IsMouseDoubleClicked(0)) {
-                if (std::filesystem::is_directory(path)) {
-                    m_CurrentDirectory = path;
-                } else if (IsSupportedModelFile(path)) {
-                    if (m_ModelSpawnCallback) {
-                        m_ModelSpawnCallback(path);
-                    }
-                } else if (ToLower(path.extension().string()) == ".piecescene") {
-                    m_StatusMessage = "Scene selected: " + path.filename().string();
-                    m_StatusIsError = false;
-                }
+                OpenAssetPath(path);
             }
         }
+        DrawAssetContextMenu(path);
         if (IsSupportedModelFile(path) && ImGui::BeginDragDropSource()) {
             const std::string pathString = path.string();
             ImGui::SetDragDropPayload("UPLOADED_OBJ_TEMPLATE", pathString.c_str(), pathString.size() + 1);
@@ -399,6 +462,12 @@ void ContentBrowserPanel::DrawFilesystemAssets() {
                 ImGui::SetDragDropPayload("MATERIAL_ASSET", &materialId, sizeof(materialId));
                 ImGui::TextUnformatted(materialIt->name.c_str());
             }
+            ImGui::EndDragDropSource();
+        }
+        if (ToLower(path.extension().string()) == ".cs" && ImGui::BeginDragDropSource()) {
+            const std::string pathString = path.string();
+            ImGui::SetDragDropPayload("SCRIPT_ASSET", pathString.c_str(), pathString.size() + 1);
+            ImGui::TextUnformatted(path.stem().string().c_str());
             ImGui::EndDragDropSource();
         }
         ImGui::PopID();
@@ -591,46 +660,25 @@ void ContentBrowserPanel::DrawUploadedTemplates() {
 }
 
 void ContentBrowserPanel::CreateNewScript() {
-    namespace fs = std::filesystem;
+    const std::filesystem::path targetDirectory = GetCurrentRootDirectory() == m_ScriptsDirectory
+        ? m_CurrentDirectory
+        : m_ScriptsDirectory;
 
-    const fs::path scriptsDir = fs::path("Scripts") / "Piece.ScriptCore" / "src" / "Game";
-    std::error_code error;
-    fs::create_directories(scriptsDir, error);
-
-    std::string className = "NewScript";
-    fs::path scriptPath = scriptsDir / (className + ".cs");
-    for (int suffix = 1; fs::exists(scriptPath); ++suffix) {
-        className = "NewScript" + std::to_string(suffix + 1);
-        scriptPath = scriptsDir / (className + ".cs");
-    }
-
-    std::ofstream file(scriptPath);
-    if (!file.is_open()) {
-        m_StatusMessage = "Failed to create " + scriptPath.string();
+    std::filesystem::path scriptPath;
+    const std::string className = ScriptUtils::CreateScriptFile("NewScript", scriptPath, targetDirectory);
+    if (className.empty()) {
+        m_StatusMessage = "Failed to create new script file.";
         m_StatusIsError = true;
         return;
     }
 
-    file << "using PieceEngine;\n\n"
-         << "public class " << className << " : ScriptBase\n"
-         << "{\n"
-         << "    public override void OnCreate()\n"
-         << "    {\n\n"
-         << "    }\n\n"
-         << "    public override void OnUpdate(float deltaTime)\n"
-         << "    {\n\n"
-         << "    }\n"
-         << "}\n";
-    file.close();
-
-    const fs::path solutionPath = fs::path("Scripts") / "Piece.ScriptCore" / "Piece.ScriptCore.slnx";
-    if (Platform::OpenFileInVisualStudio(solutionPath.string(), scriptPath.string())) {
-        m_StatusMessage = "Created " + className + ".cs and opened it in Visual Studio.";
-        m_StatusIsError = false;
-    } else {
-        m_StatusMessage = "Created " + className + ".cs but could not find Visual Studio to open it.";
-        m_StatusIsError = true;
-    }
+    ScriptUtils::OpenScriptInVisualStudio(scriptPath);
+    m_StatusMessage = "Created " + className + ".cs. Compiling...";
+    m_StatusIsError = false;
+    ScriptUtils::RecompileAndReloadGameScripts([this](bool success, std::string message) {
+        m_StatusMessage = message;
+        m_StatusIsError = !success;
+    });
 }
 
 void ContentBrowserPanel::ImportModelAsset() {
@@ -814,6 +862,118 @@ void ContentBrowserPanel::BeginRenameMaterial(uint32_t materialId, const std::st
     m_RenameMaterialId = materialId;
     std::snprintf(m_RenameMaterialBuffer, sizeof(m_RenameMaterialBuffer), "%s", name.c_str());
     m_OpenRenameMaterialPopup = true;
+}
+
+void ContentBrowserPanel::OpenAssetPath(const std::filesystem::path& path) {
+    if (std::filesystem::is_directory(path)) {
+        m_CurrentDirectory = path;
+    } else if (IsSupportedModelFile(path)) {
+        if (m_ModelSpawnCallback) {
+            m_ModelSpawnCallback(path);
+        }
+    } else if (ToLower(path.extension().string()) == ".piecescene") {
+        m_StatusMessage = "Scene selected: " + path.filename().string();
+        m_StatusIsError = false;
+    } else if (ToLower(path.extension().string()) == ".cs") {
+        if (ScriptUtils::OpenScriptInVisualStudio(path)) {
+            m_StatusMessage = "Opened " + path.filename().string() + " in Visual Studio.";
+            m_StatusIsError = false;
+        } else {
+            m_StatusMessage = "Could not find Visual Studio to open " + path.filename().string() + ".";
+            m_StatusIsError = true;
+        }
+    }
+}
+
+void ContentBrowserPanel::DrawAssetContextMenu(const std::filesystem::path& path) {
+    if (!ImGui::BeginPopupContextItem()) {
+        return;
+    }
+
+    if (ImGui::MenuItem("Open")) {
+        OpenAssetPath(path);
+    }
+    if (ImGui::MenuItem("Rename")) {
+        BeginRenameAssetPath(path);
+    }
+    if (ImGui::MenuItem("Delete")) {
+        m_DeleteAssetPath = path;
+        m_OpenDeleteAssetConfirmPopup = true;
+    }
+
+    ImGui::EndPopup();
+}
+
+void ContentBrowserPanel::BeginRenameAssetPath(const std::filesystem::path& path) {
+    m_RenameAssetPath = path;
+    std::snprintf(m_RenameAssetBuffer, sizeof(m_RenameAssetBuffer), "%s", path.stem().string().c_str());
+    m_OpenRenameAssetPopup = true;
+}
+
+void ContentBrowserPanel::ConfirmRenameAssetPath() {
+    if (m_RenameAssetPath.empty() || m_RenameAssetBuffer[0] == '\0') {
+        m_RenameAssetPath.clear();
+        return;
+    }
+
+    std::filesystem::path newPath = m_RenameAssetPath.parent_path() / m_RenameAssetBuffer;
+    if (std::filesystem::is_regular_file(m_RenameAssetPath)) {
+        newPath += m_RenameAssetPath.extension();
+    }
+
+    if (newPath == m_RenameAssetPath) {
+        m_RenameAssetPath.clear();
+        return;
+    }
+
+    std::error_code error;
+    if (std::filesystem::exists(newPath, error)) {
+        m_StatusMessage = "An item named '" + newPath.filename().string() + "' already exists.";
+        m_StatusIsError = true;
+        m_RenameAssetPath.clear();
+        return;
+    }
+
+    std::filesystem::rename(m_RenameAssetPath, newPath, error);
+    if (error) {
+        m_StatusMessage = "Failed to rename: " + error.message();
+        m_StatusIsError = true;
+    } else {
+        m_StatusMessage = "Renamed to " + newPath.filename().string() + ".";
+        m_StatusIsError = false;
+        if (m_SelectedAssetPath == m_RenameAssetPath) {
+            m_SelectedAssetPath = newPath;
+        }
+        if (m_CurrentDirectory == m_RenameAssetPath) {
+            m_CurrentDirectory = newPath;
+        }
+    }
+
+    m_RenameAssetPath.clear();
+}
+
+void ContentBrowserPanel::DeleteAssetPath(const std::filesystem::path& path) {
+    std::error_code error;
+    if (std::filesystem::is_directory(path)) {
+        std::filesystem::remove_all(path, error);
+    } else {
+        std::filesystem::remove(path, error);
+    }
+
+    if (error) {
+        m_StatusMessage = "Failed to delete " + path.filename().string() + ": " + error.message();
+        m_StatusIsError = true;
+        return;
+    }
+
+    m_StatusMessage = "Deleted " + path.filename().string() + ".";
+    m_StatusIsError = false;
+    if (m_SelectedAssetPath == path) {
+        m_SelectedAssetPath.clear();
+    }
+    if (m_CurrentDirectory == path) {
+        m_CurrentDirectory = path.has_parent_path() ? path.parent_path() : m_AssetsDirectory;
+    }
 }
 
 std::string ContentBrowserPanel::NormalizeKey(const std::filesystem::path& path) {
